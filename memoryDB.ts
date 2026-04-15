@@ -8,7 +8,7 @@
 //   2. Utwórz plik db/mongooseDB.ts z tą samą klasą DB
 //   3. Podmień import w routes/workouts.ts i services/pushService.ts
 
-import { Workout, PushSubscriptionRecord } from '../types/Workout.js';
+import { Workout, PushSubscriptionRecord } from './Workout.js';
 
 class MemoryDB {
   // ── Workouty ────────────────────────────────────────────────────────────────

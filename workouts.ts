@@ -1,8 +1,8 @@
 // ─── WORKOUTS ROUTER ─────────────────────────────────────────────────────────
 
 import { Router, Request, Response } from 'express';
-import { db } from '../db/memoryDB.js';
-import { Workout, CreateWorkoutDto, UpdateWorkoutDto, WorkoutType } from '../types/Workout.js';
+import { db } from './memoryDB.js';
+import { Workout, CreateWorkoutDto, UpdateWorkoutDto, WorkoutType } from './Workout.js';
 
 export const workoutsRouter = Router();
 

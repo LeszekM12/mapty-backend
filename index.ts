@@ -4,8 +4,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { workoutsRouter } from './routes/workouts.js';
-import { pushRouter }     from './services/pushService.js';
+import { workoutsRouter } from './workouts.js';
+import { pushRouter }     from './pushService.js';
 
 const app  = express();
 const PORT = process.env.PORT ?? 3000;

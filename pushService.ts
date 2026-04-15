@@ -2,8 +2,8 @@
 
 import webpush from 'web-push';
 import { Router, Request, Response } from 'express';
-import { db } from '../db/memoryDB.js';
-import { PushSubscriptionRecord, PushPayload } from '../types/Workout.js';
+import { db } from './memoryDB.js';
+import { PushSubscriptionRecord, PushPayload } from './Workout.js';
 
 // ── VAPID setup ───────────────────────────────────────────────────────────────
 //
