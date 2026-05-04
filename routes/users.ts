@@ -14,18 +14,67 @@ usersRouter.post('/lookup-by-endpoint', async (req: Request, res: Response) => {
   res.json({ status: 'ok', userId: sub.userId });
 });
 
-// GET /users/public/:userId — publiczny profil (imię + avatar URL, bez danych prywatnych)
+// GET /users/public/:userId — publiczny profil
 usersRouter.get('/public/:userId', async (req: Request, res: Response) => {
+  const { viewerId } = req.query as { viewerId?: string };
   const user = await User.findOne({ userId: req.params.userId });
   if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
+
+  const isFollowing = viewerId
+    ? (user.followers ?? []).includes(viewerId)
+    : false;
+
   res.json({
     status: 'ok',
     data: {
-      userId:    user.userId,
-      name:      user.name,
-      avatarB64: user.avatarB64,
+      userId:        user.userId,
+      name:          user.name,
+      bio:           user.bio,
+      avatarB64:     user.avatarB64,
+      followersCount: (user.followers ?? []).length,
+      followingCount: (user.following ?? []).length,
+      isFollowing,
     },
   });
+});
+
+// POST /users/:userId/follow/:targetId — obserwuj
+usersRouter.post('/:userId/follow/:targetId', async (req: Request, res: Response) => {
+  const { userId, targetId } = req.params;
+  if (userId === targetId) return void res.status(400).json({ status: 'error', message: 'Cannot follow yourself' });
+
+  await Promise.all([
+    // Dodaj userId do followers targetu
+    User.findOneAndUpdate(
+      { userId: targetId },
+      { $addToSet: { followers: userId } },
+    ),
+    // Dodaj targetId do following usera
+    User.findOneAndUpdate(
+      { userId },
+      { $addToSet: { following: targetId } },
+    ),
+  ]);
+
+  res.json({ status: 'ok', following: true });
+});
+
+// DELETE /users/:userId/follow/:targetId — przestań obserwować
+usersRouter.delete('/:userId/follow/:targetId', async (req: Request, res: Response) => {
+  const { userId, targetId } = req.params;
+
+  await Promise.all([
+    User.findOneAndUpdate(
+      { userId: targetId },
+      { $pull: { followers: userId } },
+    ),
+    User.findOneAndUpdate(
+      { userId },
+      { $pull: { following: targetId } },
+    ),
+  ]);
+
+  res.json({ status: 'ok', following: false });
 });
 
 // GET /users/:userId

@@ -26,10 +26,11 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   const { userId } = req.query;
   if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
 
-  // Pobierz listę znajomych
+  // Pobierz listę znajomych i obserwowanych
   const user = await User.findOne({ userId });
-  const friendIds = user?.friends ?? [];
-  const allIds = [userId as string, ...friendIds];
+  const friendIds    = user?.friends   ?? [];
+  const followingIds = (user?.following as string[] | undefined) ?? [];
+  const allIds = [...new Set([userId as string, ...friendIds, ...followingIds])];
 
   // Pobierz aktywności i posty wszystkich równolegle
   const [activities, posts] = await Promise.all([
