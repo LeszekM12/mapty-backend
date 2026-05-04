@@ -38,12 +38,86 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   const avatarMap = new Map(users.map(u => [u.userId, u.avatarB64]));
 
   // Zmerguj i posortuj po dacie
-  const feed = [
+  const feedItems = [
     ...activities.map(a => ({ kind: 'activity', date: a.date, data: { ...a.toObject(), authorAvatarUrl: avatarMap.get(a.userId) ?? null } })),
     ...posts.map(p => ({ kind: 'post', date: p.date, data: { ...p.toObject(), authorAvatarUrl: avatarMap.get(p.userId) ?? null } })),
   ].sort((a, b) => b.date - a.date).slice(0, 50);
 
+  // Pobierz lajki i komentarze dla wszystkich itemów naraz
+  const itemIds = feedItems.map(f => {
+    const d = f.data as Record<string, unknown>;
+    return (d.activityId ?? d.postId ?? d._id) as string;
+  }).filter(Boolean);
+
+  const [likeCounts, commentCounts] = await Promise.all([
+    Like.aggregate([
+      { $match: { itemId: { $in: itemIds } } },
+      { $group: { _id: '$itemId', count: { $sum: 1 } } },
+    ]),
+    Comment.aggregate([
+      { $match: { itemId: { $in: itemIds } } },
+      { $group: { _id: '$itemId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const likeMap    = Object.fromEntries(likeCounts.map((l: {_id: string; count: number}) => [l._id, l.count]));
+  const commentMap = Object.fromEntries(commentCounts.map((c: {_id: string; count: number}) => [c._id, c.count]));
+
+  const feed = feedItems.map(f => {
+    const d2 = f.data as Record<string, unknown>;
+    const id = (d2.activityId ?? d2.postId ?? d2._id) as string;
+    return { ...f, data: { ...f.data, _likeCount: likeMap[id] ?? 0, _commentCount: commentMap[id] ?? 0 } };
+  });
+
   res.json({ status: 'ok', count: feed.length, data: feed });
+});
+
+// ── GET /feed/likes/batch?userId=xxx&items=id1,id2,id3 ───────────────────────
+// Pobiera lajki dla wielu itemów naraz — jeden request zamiast N
+
+feedRouter.get('/likes/batch', async (req: Request, res: Response) => {
+  const { userId, items } = req.query as { userId?: string; items?: string };
+  if (!items) return void res.status(400).json({ status: 'error', message: 'items required' });
+
+  const itemIds = items.split(',').filter(Boolean);
+  const [counts, userLikes] = await Promise.all([
+    Like.aggregate([
+      { $match: { itemId: { $in: itemIds } } },
+      { $group: { _id: '$itemId', count: { $sum: 1 } } },
+    ]),
+    userId
+      ? Like.find({ itemId: { $in: itemIds }, userId }).select('itemId')
+      : Promise.resolve([]),
+  ]);
+
+  const likedSet  = new Set((userLikes as { itemId: string }[]).map(l => l.itemId));
+  const countMap  = Object.fromEntries(counts.map((c: { _id: string; count: number }) => [c._id, c.count]));
+
+  const result = Object.fromEntries(
+    itemIds.map(id => [id, { count: countMap[id] ?? 0, liked: likedSet.has(id) }])
+  );
+
+  res.json({ status: 'ok', data: result });
+});
+
+// ── GET /feed/comments/batch?items=id1,id2,id3 ───────────────────────────────
+// Pobiera komentarze dla wielu itemów naraz
+
+feedRouter.get('/comments/batch', async (req: Request, res: Response) => {
+  const { items } = req.query as { items?: string };
+  if (!items) return void res.status(400).json({ status: 'error', message: 'items required' });
+
+  const itemIds  = items.split(',').filter(Boolean);
+  const comments = await Comment.find({ itemId: { $in: itemIds } }).sort({ createdAt: 1 });
+
+  const result: Record<string, typeof comments> = {};
+  for (const id of itemIds) result[id] = [];
+  for (const c of comments) {
+    if (!result[c.itemId]) result[c.itemId] = [];
+    result[c.itemId].push(c);
+  }
+
+  res.json({ status: 'ok', data: result });
 });
 
 // ── POST /feed/like ───────────────────────────────────────────────────────────
