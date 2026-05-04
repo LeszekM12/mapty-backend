@@ -32,10 +32,15 @@ feedRouter.get('/', async (req: Request, res: Response) => {
     Post.find({ userId: { $in: allIds } }).sort({ date: -1 }).limit(50),
   ]);
 
+  // Pobierz avatary użytkowników
+  const userIds = [...new Set([...activities.map(a => a.userId), ...posts.map(p => p.userId)])];
+  const users   = await (await import('../models/User.js')).User.find({ userId: { $in: userIds } });
+  const avatarMap = new Map(users.map(u => [u.userId, u.avatarB64]));
+
   // Zmerguj i posortuj po dacie
   const feed = [
-    ...activities.map(a => ({ kind: 'activity', date: a.date, data: a.toObject() })),
-    ...posts.map(p => ({ kind: 'post', date: p.date, data: p.toObject() })),
+    ...activities.map(a => ({ kind: 'activity', date: a.date, data: { ...a.toObject(), authorAvatarUrl: avatarMap.get(a.userId) ?? null } })),
+    ...posts.map(p => ({ kind: 'post', date: p.date, data: { ...p.toObject(), authorAvatarUrl: avatarMap.get(p.userId) ?? null } })),
   ].sort((a, b) => b.date - a.date).slice(0, 50);
 
   res.json({ status: 'ok', count: feed.length, data: feed });
