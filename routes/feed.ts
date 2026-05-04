@@ -18,6 +18,11 @@ export const feedRouter = Router();
 // Zwraca aktywności + posty własne i znajomych posortowane po dacie
 
 feedRouter.get('/', async (req: Request, res: Response) => {
+  // Wyłącz cache — feed musi być zawsze świeży
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const { userId } = req.query;
   if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
 
