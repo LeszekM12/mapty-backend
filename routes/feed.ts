@@ -42,11 +42,22 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   const users   = await (await import('../models/User.js')).User.find({ userId: { $in: userIds } });
   const avatarMap = new Map(users.map(u => [u.userId, u.avatarB64]));
 
-  // Zmerguj i posortuj po dacie
+  // Zmerguj i posortuj po dacie — strip heavy fields
+  const stripActivity = (a: ReturnType<typeof activities[0]['toObject']>) => {
+    const { coords, ...lean } = a as Record<string, unknown> & { coords?: unknown };
+    void coords;
+    return { ...lean, authorAvatarUrl: avatarMap.get(a.userId) ?? null };
+  };
+  const stripPost = (p: ReturnType<typeof posts[0]['toObject']>) => {
+    const { avatarB64, ...lean } = p as Record<string, unknown> & { avatarB64?: unknown };
+    void avatarB64;
+    return { ...lean, authorAvatarUrl: avatarMap.get(p.userId) ?? null };
+  };
+
   const feedItems = [
-    ...activities.map(a => ({ kind: 'activity', date: a.date, data: { ...a.toObject(), authorAvatarUrl: avatarMap.get(a.userId) ?? null } })),
-    ...posts.map(p => ({ kind: 'post', date: p.date, data: { ...p.toObject(), authorAvatarUrl: avatarMap.get(p.userId) ?? null } })),
-  ].sort((a, b) => b.date - a.date).slice(0, 50);
+    ...activities.map(a => ({ kind: 'activity', date: a.date, data: stripActivity(a.toObject()) })),
+    ...posts.map(p => ({ kind: 'post', date: p.date, data: stripPost(p.toObject()) })),
+  ].sort((a, b) => b.date - a.date).slice(0, 20);
 
   // Pobierz lajki i komentarze dla wszystkich itemów naraz
   const itemIds = feedItems.map(f => {
