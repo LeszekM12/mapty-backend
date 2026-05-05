@@ -29,7 +29,7 @@ uploadRouter.post('/image', async (req: Request, res: Response) => {
   const { image, userId, folder = 'general', publicId } = req.body as {
     image:     string;
     userId:    string;
-    folder?:   'activities' | 'posts' | 'avatars' | 'general';
+    folder?:   'activities' | 'posts' | 'avatars' | 'minimaps' | 'general';
     publicId?: string;
   };
 
