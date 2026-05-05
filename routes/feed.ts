@@ -23,8 +23,12 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  const { userId } = req.query;
+  const { userId, before } = req.query as { userId?: string; before?: string };
   if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
+
+  const PAGE_SIZE = 20;
+  // before = timestamp — pobierz rekordy starsze niż ten timestamp
+  const beforeDate = before ? parseInt(before, 10) : Date.now();
 
   // Pobierz listę znajomych i obserwowanych
   const user = await User.findOne({ userId });
@@ -32,10 +36,10 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   const followingIds = (user?.following as string[] | undefined) ?? [];
   const allIds = [...new Set([userId as string, ...friendIds, ...followingIds])];
 
-  // Pobierz aktywności i posty wszystkich równolegle
+  // Pobierz aktywności i posty starsze niż beforeDate
   const [activities, posts] = await Promise.all([
-    EnrichedActivity.find({ userId: { $in: allIds } }).sort({ date: -1 }).limit(50),
-    Post.find({ userId: { $in: allIds } }).sort({ date: -1 }).limit(50),
+    EnrichedActivity.find({ userId: { $in: allIds }, date: { $lt: beforeDate } }).sort({ date: -1 }).limit(PAGE_SIZE + 1),
+    Post.find({ userId: { $in: allIds }, date: { $lt: beforeDate } }).sort({ date: -1 }).limit(PAGE_SIZE + 1),
   ]);
 
   // Pobierz avatary użytkowników
@@ -55,10 +59,13 @@ feedRouter.get('/', async (req: Request, res: Response) => {
     return { ...lean, authorAvatarUrl: avatarMap.get(p.userId) ?? null };
   };
 
-  const feedItems = [
+  const merged = [
     ...activities.map(a => ({ kind: 'activity', date: a.date, data: stripActivity(a.toObject()) })),
     ...posts.map(p => ({ kind: 'post', date: p.date, data: stripPost(p.toObject()) })),
-  ].sort((a, b) => b.date - a.date).slice(0, 20);
+  ].sort((a, b) => b.date - a.date);
+
+  const hasMore   = merged.length > PAGE_SIZE;
+  const feedItems = merged.slice(0, PAGE_SIZE);
 
   // Pobierz lajki i komentarze dla wszystkich itemów naraz
   const itemIds = feedItems.map(f => {
@@ -86,7 +93,7 @@ feedRouter.get('/', async (req: Request, res: Response) => {
     return { ...f, data: { ...f.data, _likeCount: likeMap[id] ?? 0, _commentCount: commentMap[id] ?? 0 } };
   });
 
-  res.json({ status: 'ok', count: feed.length, data: feed });
+  res.json({ status: 'ok', count: feed.length, hasMore, data: feed });
 });
 
 // ── GET /feed/likes/batch?userId=xxx&items=id1,id2,id3 ───────────────────────
