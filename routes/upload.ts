@@ -114,3 +114,22 @@ uploadRouter.get('/health', async (_req: Request, res: Response) => {
     res.status(500).json({ status: 'error', message: String(err) });
   }
 });
+
+// GET /upload/tile?z=&x=&y= — proxy OSM tiles (avoids CORS)
+import type { IncomingMessage, ServerResponse } from 'http';
+import https from 'https';
+
+uploadRouter.get('/tile', (req: Request, res: Response) => {
+  const { z, x, y } = req.query as { z: string; x: string; y: string };
+  if (!z || !x || !y) return void res.status(400).json({ error: 'z,x,y required' });
+
+  const url = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+  https.get(url, {
+    headers: { 'User-Agent': 'MapYou/1.0 (leszekm12@github)' }
+  }, (tileRes: IncomingMessage) => {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    tileRes.pipe(res as unknown as ServerResponse);
+  }).on('error', () => res.status(502).send('tile error'));
+});
