@@ -40,40 +40,62 @@ migrateRouter.get('/fix-photos', async (req: Request, res: Response) => {
     const cloudActivities = actResult.resources ?? [];
     const cloudPosts = postResult.resources ?? [];
 
+    // Sortuj Cloudinary assets po dacie
+    cloudActivities.sort((a: { created_at: string }, b: { created_at: string }) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
     // Dla każdej aktywności z null photoUrl — znajdź najbliższe zdjęcie w Cloudinary po dacie
+    const usedCloudIds = new Set<string>();
     for (const act of nullActivities) {
       const actDate = act.date; // timestamp ms
-      // Znajdź zasób Cloudinary stworzony najbliżej tej daty (w ciągu 1 minuty)
-      const match = cloudActivities.find((r: { created_at: string; secure_url: string; public_id: string }) => {
+      // Znajdź najbliższy asset który nie był już użyty
+      let bestMatch: { created_at: string; secure_url: string; public_id: string } | null = null;
+      let bestDiff = Infinity;
+      for (const r of cloudActivities as { created_at: string; secure_url: string; public_id: string }[]) {
+        if (usedCloudIds.has(r.public_id)) continue;
         const cloudDate = new Date(r.created_at).getTime();
-        return Math.abs(cloudDate - actDate) < 5 * 60 * 1000; // 5 minut tolerancji
-      });
+        const diff = Math.abs(cloudDate - actDate);
+        if (diff < bestDiff) { bestDiff = diff; bestMatch = r; }
+      }
+      const match = bestMatch && bestDiff < 60 * 60 * 1000 ? bestMatch : null; // 1h tolerancji
 
       if (match) {
         await EnrichedActivity.findOneAndUpdate(
           { activityId: act.activityId, userId },
           { $set: { photoUrl: match.secure_url, photoPublicId: match.public_id } }
         );
+        usedCloudIds.add(match.public_id);
         fixed++;
-        console.log(`[Migrate] Fixed activity ${act.name}: ${match.secure_url}`);
+        console.log(`[Migrate] Fixed activity ${act.name}: diff=${Math.round(bestDiff/1000)}s url=${match.secure_url}`);
       }
     }
 
     // Dla postów
+    const usedPostIds = new Set<string>();
+    cloudPosts.sort((a: { created_at: string }, b: { created_at: string }) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
     for (const post of nullPosts) {
       const postDate = post.date;
-      const match = cloudPosts.find((r: { created_at: string; secure_url: string; public_id: string }) => {
+      let bestPostMatch: { created_at: string; secure_url: string; public_id: string } | null = null;
+      let bestPostDiff = Infinity;
+      for (const r of cloudPosts as { created_at: string; secure_url: string; public_id: string }[]) {
+        if (usedPostIds.has(r.public_id)) continue;
         const cloudDate = new Date(r.created_at).getTime();
-        return Math.abs(cloudDate - postDate) < 5 * 60 * 1000;
-      });
+        const diff = Math.abs(cloudDate - postDate);
+        if (diff < bestPostDiff) { bestPostDiff = diff; bestPostMatch = r; }
+      }
+      const match = bestPostMatch && bestPostDiff < 60 * 60 * 1000 ? bestPostMatch : null;
 
       if (match) {
         await Post.findOneAndUpdate(
           { postId: post.postId, userId },
           { $set: { photoUrl: match.secure_url, photoPublicId: match.public_id } }
         );
+        usedPostIds.add(match.public_id);
         fixed++;
-        console.log(`[Migrate] Fixed post ${post.title}: ${match.secure_url}`);
+        console.log(`[Migrate] Fixed post ${post.title}: diff=${Math.round(bestPostDiff/1000)}s`);
       }
     }
 
