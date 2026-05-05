@@ -71,3 +71,14 @@ postsRouter.post('/bulk', async (req: Request, res: Response) => {
   const result = await Post.bulkWrite(ops as any[]);
   res.json({ status: 'ok', upserted: result.upsertedCount, modified: result.modifiedCount });
 });
+
+// PATCH /posts/:postId/photo — zaktualizuj photoUrl
+postsRouter.post('/:postId/photo', async (req: Request, res: Response) => {
+  const { userId, photoUrl, photoPublicId } = req.body as { userId: string; photoUrl: string; photoPublicId: string };
+  const { postId } = req.params;
+  await Post.findOneAndUpdate(
+    { postId, userId },
+    { $set: { photoUrl, photoPublicId } }
+  );
+  res.json({ status: 'ok' });
+});
