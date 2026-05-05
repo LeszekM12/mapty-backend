@@ -1,162 +1,92 @@
-// ─── MIGRATION ROUTER ────────────────────────────────────────────────────────
 import { Router, Request, Response } from 'express';
-import { Workout }          from '../models/Workout.js';
-import { Activity }         from '../models/Activity.js';
+import { v2 as cloudinary } from 'cloudinary';
 import { EnrichedActivity } from '../models/EnrichedActivity.js';
-import { UnifiedWorkout }   from '../models/UnifiedWorkout.js';
-import { Post }             from '../models/Post.js';
-import { User }             from '../models/User.js';
+import { Post } from '../models/Post.js';
 
 export const migrateRouter = Router();
 
-// ── Usuń base64 przed zapisem do MongoDB ──────────────────────────────────────
-// Zdjęcia które nie trafiły do Cloudinary są zastępowane null
-// MongoDB ma limit 16MB per dokument — base64 łatwo go przekracza
-function stripBase64<T extends Record<string, unknown>>(items: T[]): T[] {
-  return items.map(item => {
-    const clean = { ...item };
-    for (const key of Object.keys(clean)) {
-      const val = clean[key];
-      if (typeof val === 'string' && val.startsWith('data:image/')) {
-        (clean as Record<string, unknown>)[key] = null;
-      }
-    }
-    return clean as T;
-  });
-}
+// GET /migrate/fix-photos?userId=xxx
+// Szuka zdjęć w Cloudinary dla danego userId i aktualizuje Atlas
+migrateRouter.get('/fix-photos', async (req: Request, res: Response) => {
+  const { userId } = req.query as { userId?: string };
+  if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
 
-interface MigratePayload {
-  userId:              string;
-  workouts?:           Record<string, unknown>[];
-  activities?:         Record<string, unknown>[];
-  enrichedActivities?: Record<string, unknown>[];
-  unifiedWorkouts?:    Record<string, unknown>[];
-  posts?:              Record<string, unknown>[];
-  profile?:            Record<string, unknown>;
-}
-
-// POST /migrate/bulk
-migrateRouter.post('/bulk', async (req: Request, res: Response) => {
-  const {
-    userId,
-    workouts          = [],
-    activities        = [],
-    enrichedActivities = [],
-    unifiedWorkouts   = [],
-    posts             = [],
-    profile,
-  } = req.body as MigratePayload;
-
-  if (!userId) {
-    return void res.status(400).json({ status: 'error', message: 'userId required' });
-  }
-
-  const summary: Record<string, number> = {};
+  let fixed = 0;
+  const errors: string[] = [];
 
   try {
-    // Workouts
-    if (workouts.length) {
-      const clean = stripBase64(workouts);
-      const ops = clean.map(item => ({
-        updateOne: {
-          filter: { workoutId: item.workoutId ?? item.id, userId },
-          update: { $set: { ...item, workoutId: item.workoutId ?? item.id, userId, syncedAt: new Date() } },
-          upsert: true,
-        },
-      }));
-      const r = await Workout.bulkWrite(ops as any[]);
-      summary.workouts = r.upsertedCount + r.modifiedCount;
+    // Pobierz wszystkie zasoby z Cloudinary dla tego userId
+    const [actResult, postResult] = await Promise.all([
+      cloudinary.api.resources({
+        type: 'upload',
+        prefix: `mapyou/activities/${userId}/`,
+        max_results: 500,
+      }),
+      cloudinary.api.resources({
+        type: 'upload',
+        prefix: `mapyou/posts/${userId}/`,
+        max_results: 500,
+      }),
+    ]);
+
+    // Pobierz rekordy z null photoUrl
+    const [nullActivities, nullPosts] = await Promise.all([
+      EnrichedActivity.find({ userId, photoUrl: null }),
+      Post.find({ userId, photoUrl: null }),
+    ]);
+
+    // Dla activities — próbuj dopasować po dacie (timestamp w nazwie folderu)
+    // Cloudinary resources mają created_at — porównaj z activity.date
+    const cloudActivities = actResult.resources ?? [];
+    const cloudPosts = postResult.resources ?? [];
+
+    // Dla każdej aktywności z null photoUrl — znajdź najbliższe zdjęcie w Cloudinary po dacie
+    for (const act of nullActivities) {
+      const actDate = act.date; // timestamp ms
+      // Znajdź zasób Cloudinary stworzony najbliżej tej daty (w ciągu 1 minuty)
+      const match = cloudActivities.find((r: { created_at: string; secure_url: string; public_id: string }) => {
+        const cloudDate = new Date(r.created_at).getTime();
+        return Math.abs(cloudDate - actDate) < 5 * 60 * 1000; // 5 minut tolerancji
+      });
+
+      if (match) {
+        await EnrichedActivity.findOneAndUpdate(
+          { activityId: act.activityId, userId },
+          { $set: { photoUrl: match.secure_url, photoPublicId: match.public_id } }
+        );
+        fixed++;
+        console.log(`[Migrate] Fixed activity ${act.name}: ${match.secure_url}`);
+      }
     }
 
-    // Activities
-    if (activities.length) {
-      const clean = stripBase64(activities);
-      const ops = clean.map(item => ({
-        updateOne: {
-          filter: { activityId: item.activityId ?? item.id, userId },
-          update: { $set: { ...item, activityId: item.activityId ?? item.id, userId, syncedAt: new Date() } },
-          upsert: true,
-        },
-      }));
-      const r = await Activity.bulkWrite(ops as any[]);
-      summary.activities = r.upsertedCount + r.modifiedCount;
+    // Dla postów
+    for (const post of nullPosts) {
+      const postDate = post.date;
+      const match = cloudPosts.find((r: { created_at: string; secure_url: string; public_id: string }) => {
+        const cloudDate = new Date(r.created_at).getTime();
+        return Math.abs(cloudDate - postDate) < 5 * 60 * 1000;
+      });
+
+      if (match) {
+        await Post.findOneAndUpdate(
+          { postId: post.postId, userId },
+          { $set: { photoUrl: match.secure_url, photoPublicId: match.public_id } }
+        );
+        fixed++;
+        console.log(`[Migrate] Fixed post ${post.title}: ${match.secure_url}`);
+      }
     }
 
-    // EnrichedActivities
-    if (enrichedActivities.length) {
-      const clean = stripBase64(enrichedActivities);
-      const ops = clean.map(item => ({
-        updateOne: {
-          filter: { activityId: item.activityId ?? item.id, userId },
-          update: { $set: { ...item, activityId: item.activityId ?? item.id, userId, syncedAt: new Date() } },
-          upsert: true,
-        },
-      }));
-      const r = await EnrichedActivity.bulkWrite(ops as any[]);
-      summary.enrichedActivities = r.upsertedCount + r.modifiedCount;
-    }
-
-    // UnifiedWorkouts
-    if (unifiedWorkouts.length) {
-      const clean = stripBase64(unifiedWorkouts);
-      const ops = clean.map(item => ({
-        updateOne: {
-          filter: { workoutId: item.workoutId ?? item.id, userId },
-          update: { $set: { ...item, workoutId: item.workoutId ?? item.id, userId, syncedAt: new Date() } },
-          upsert: true,
-        },
-      }));
-      const r = await UnifiedWorkout.bulkWrite(ops as any[]);
-      summary.unifiedWorkouts = r.upsertedCount + r.modifiedCount;
-    }
-
-    // Posts
-    if (posts.length) {
-      const clean = stripBase64(posts);
-      const ops = clean.map(item => ({
-        updateOne: {
-          filter: { postId: item.postId ?? item.id, userId },
-          update: { $set: { ...item, postId: item.postId ?? item.id, userId, syncedAt: new Date() } },
-          upsert: true,
-        },
-      }));
-      const r = await Post.bulkWrite(ops as any[]);
-      summary.posts = r.upsertedCount + r.modifiedCount;
-    }
-
-    // Profile
-    if (profile) {
-      const cleanProfile = stripBase64([profile])[0];
-      await User.findOneAndUpdate(
-        { userId },
-        { $set: { ...cleanProfile, userId } },
-        { upsert: true, new: true },
-      );
-      summary.profile = 1;
-    }
-
-    console.log(`[Migrate] userId=${userId}:`, summary);
-    res.json({ status: 'ok', message: 'Migration complete', summary });
-
+    res.json({
+      status: 'ok',
+      fixed,
+      nullActivities: nullActivities.length,
+      nullPosts: nullPosts.length,
+      cloudAssets: cloudActivities.length + cloudPosts.length,
+      errors,
+    });
   } catch (err) {
-    console.error('[Migrate] Error:', err);
+    console.error('[Migrate] fix-photos error:', err);
     res.status(500).json({ status: 'error', message: String(err) });
   }
-});
-
-// GET /migrate/status/:userId
-migrateRouter.get('/status/:userId', async (req: Request, res: Response) => {
-  const { userId } = req.params;
-  const [w, a, e, u, p] = await Promise.all([
-    Workout.countDocuments({ userId }),
-    Activity.countDocuments({ userId }),
-    EnrichedActivity.countDocuments({ userId }),
-    UnifiedWorkout.countDocuments({ userId }),
-    Post.countDocuments({ userId }),
-  ]);
-  res.json({
-    status: 'ok',
-    userId,
-    counts: { workouts: w, activities: a, enrichedActivities: e, unifiedWorkouts: u, posts: p },
-  });
 });
