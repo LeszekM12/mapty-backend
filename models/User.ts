@@ -7,8 +7,10 @@ export interface IUser extends Document {
   bio:          string;
   avatarB64:    string | null;
   friends:      string[]; // userId[]
-  followers:    string[]; // userId[] — kto obserwuje tego usera
-  following:    string[]; // userId[] — kogo ten user obserwuje
+  followers:    string[];
+  following:    string[];
+  weeklyWins:   number;
+  bestStreak:   number;
   clubs:        string[]; // clubId[]
   createdAt:    Date;
   updatedAt:    Date;
@@ -21,8 +23,10 @@ const UserSchema = new Schema<IUser>(
     bio:       { type: String, default: '' },
     avatarB64: { type: String, default: null },
     friends:   [{ type: String }],
-    followers: [{ type: String }],
-    following: [{ type: String }],
+    followers:  [{ type: String }],
+    following:  [{ type: String }],
+    weeklyWins: { type: Number, default: 0 },
+    bestStreak: { type: Number, default: 0 },
     clubs:     [{ type: String }],
   },
   {

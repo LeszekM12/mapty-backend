@@ -16,6 +16,8 @@ usersRouter.post('/lookup-by-endpoint', async (req: Request, res: Response) => {
 
 // GET /users/public/:userId — publiczny profil
 usersRouter.get('/public/:userId', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   const { viewerId } = req.query as { viewerId?: string };
   const user = await User.findOne({ userId: req.params.userId });
   if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
@@ -27,13 +29,15 @@ usersRouter.get('/public/:userId', async (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     data: {
-      userId:        user.userId,
-      name:          user.name,
-      bio:           user.bio,
-      avatarB64:     user.avatarB64,
+      userId:         user.userId,
+      name:           user.name,
+      bio:            user.bio,
+      avatarB64:      user.avatarB64,
       followersCount: (user.followers ?? []).length,
       followingCount: (user.following ?? []).length,
       isFollowing,
+      weeklyWins:     (user.weeklyWins as number | undefined) ?? 0,
+      bestStreak:     (user.bestStreak as number | undefined) ?? 0,
     },
   });
 });
