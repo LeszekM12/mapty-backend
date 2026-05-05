@@ -59,13 +59,19 @@ enrichedActivitiesRouter.post('/bulk', async (req: Request, res: Response) => {
   res.json({ status: 'ok', upserted: result.upsertedCount, modified: result.modifiedCount });
 });
 
-// PATCH /enriched-activities/:activityId/photo — zaktualizuj photoUrl
+// POST /enriched-activities/:activityId/photo — zaktualizuj photoUrl i/lub minimapUrl
 enrichedActivitiesRouter.post('/:activityId/photo', async (req: Request, res: Response) => {
-  const { userId, photoUrl, photoPublicId } = req.body as { userId: string; photoUrl: string; photoPublicId: string };
+  const { userId, photoUrl, photoPublicId, minimapUrl } = req.body as {
+    userId: string; photoUrl?: string; photoPublicId?: string; minimapUrl?: string;
+  };
   const { activityId } = req.params;
+  const update: Record<string, unknown> = {};
+  if (photoUrl !== undefined)    update.photoUrl    = photoUrl;
+  if (photoPublicId !== undefined) update.photoPublicId = photoPublicId;
+  if (minimapUrl !== undefined)  update.minimapUrl  = minimapUrl;
   await EnrichedActivity.findOneAndUpdate(
     { activityId, userId },
-    { $set: { photoUrl, photoPublicId } }
+    { $set: update }
   );
   res.json({ status: 'ok' });
 });
