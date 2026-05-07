@@ -10,14 +10,13 @@ export interface IEnrichedActivity extends Document {
   description: string;
   photoUrl:    string | null;
   photoPublicId: string | null;
-  minimapUrl:    string | null;
   distanceKm:  number;
   durationSec: number;
   paceMinKm:   number;
   speedKmH:    number;
   intensity:   number;   // 1–5
   notes:       string;
-  coords:      [number, number][];
+  coordsEnc:   string | null;   // Encoded Polyline (compressed coords)
   syncedAt:    Date;
 }
 
@@ -31,14 +30,13 @@ const EnrichedActivitySchema = new Schema<IEnrichedActivity>(
     description: { type: String, default: '' },
     photoUrl:    { type: String, default: null },
     photoPublicId: { type: String, default: null },
-    minimapUrl:    { type: String, default: null },
     distanceKm:  { type: Number, default: 0 },
     durationSec: { type: Number, default: 0 },
     paceMinKm:   { type: Number, default: 0 },
     speedKmH:    { type: Number, default: 0 },
     intensity:   { type: Number, default: 3, min: 1, max: 5 },
     notes:       { type: String, default: '' },
-    coords:      { type: [[Number]], default: [] },
+    coordsEnc:   { type: String, default: null },
     syncedAt:    { type: Date, default: Date.now },
   },
   {
