@@ -135,9 +135,6 @@ const upload = multer({
 function compressVideo(src: string, dst: string): Promise<void> {
   return new Promise((resolve, reject) =>
     ffmpeg(src)
-      .inputOptions([
-        '-allowed_extensions ALL',  // accept any container (MOV, MP4, HEVC from iPhone)
-      ])
       .videoCodec('libx264')
       .audioCodec('aac')
       .outputOptions([
@@ -146,10 +143,10 @@ function compressVideo(src: string, dst: string): Promise<void> {
         '-movflags +faststart',
         "-vf scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
         '-max_muxing_queue_size 9999',
-        '-map 0:v:0',       // first video stream only
-        '-map 0:a:0?',      // first audio stream if exists, skip if not
-        '-ac 2',            // stereo audio (normalise iPhone spatial audio)
-        '-ar 44100',        // standard sample rate
+        '-map 0:v:0',   // first video stream
+        '-map 0:a:0?',  // first audio stream if present (? = optional)
+        '-ac 2',        // stereo
+        '-ar 44100',    // standard sample rate
       ])
       .output(dst)
       .on('end',   () => resolve())
@@ -199,6 +196,9 @@ uploadRouter.post(
     const tmpOut            = path.join(os.tmpdir(), `mpy_out_${Date.now()}${ext}`);
 
     fs.writeFileSync(tmpIn, file.buffer);
+
+    // Log file info for debugging — helps identify iPhone codec issues
+    console.log(`[Upload] file.mimetype=${file.mimetype} originalname=${file.originalname} size=${file.size}`);
 
     try {
       console.log(`[Upload] 🔧 Compressing ${mediaType} (${(file.size / 1024 / 1024).toFixed(1)} MB)…`);
