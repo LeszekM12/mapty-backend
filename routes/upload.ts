@@ -17,17 +17,10 @@ import os                             from 'os';
 import https                          from 'https';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-// Prefer system ffmpeg (installed in Dockerfile — full codec support incl. HEVC from iPhone)
-// Fall back to @ffmpeg-installer bundle if system ffmpeg not available (local dev)
-const FFMPEG_PATH = (() => {
-  try {
-    const { execSync } = require('child_process') as typeof import('child_process');
-    const p = execSync('which ffmpeg 2>/dev/null', { encoding: 'utf-8' }).trim();
-    if (p) { console.log(`[Upload] System ffmpeg: ${p}`); return p; }
-  } catch {}
-  console.log(`[Upload] Bundled ffmpeg: ${ffmpegInstaller.path}`);
-  return ffmpegInstaller.path;
-})();
+// Use system ffmpeg if available (Dockerfile installs it with full codec support)
+const SYSTEM_FFMPEG = '/usr/bin/ffmpeg';
+const FFMPEG_PATH   = fs.existsSync(SYSTEM_FFMPEG) ? SYSTEM_FFMPEG : ffmpegInstaller.path;
+console.log(`[Upload] ffmpeg: ${FFMPEG_PATH}`);
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
 export const uploadRouter = Router();
@@ -142,18 +135,21 @@ const upload = multer({
 function compressVideo(src: string, dst: string): Promise<void> {
   return new Promise((resolve, reject) =>
     ffmpeg(src)
+      .inputOptions([
+        '-allowed_extensions ALL',  // accept any container (MOV, MP4, HEVC from iPhone)
+      ])
       .videoCodec('libx264')
       .audioCodec('aac')
       .outputOptions([
         '-crf 32',
         '-preset ultrafast',
         '-movflags +faststart',
-        // Scale down to max 1080p, preserve aspect ratio
         "-vf scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
-        '-max_muxing_queue_size 1024',
-        '-map 0:v:0',      // take only first video stream
-        '-map 0:a?',       // take audio if present, skip if missing
-        '-strict experimental', // allow experimental AAC encoder for HEVC/MOV from iPhone
+        '-max_muxing_queue_size 9999',
+        '-map 0:v:0',       // first video stream only
+        '-map 0:a:0?',      // first audio stream if exists, skip if not
+        '-ac 2',            // stereo audio (normalise iPhone spatial audio)
+        '-ar 44100',        // standard sample rate
       ])
       .output(dst)
       .on('end',   () => resolve())
