@@ -17,7 +17,18 @@ import os                             from 'os';
 import https                          from 'https';
 import type { IncomingMessage, ServerResponse } from 'http';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+// Prefer system ffmpeg (installed in Dockerfile — full codec support incl. HEVC from iPhone)
+// Fall back to @ffmpeg-installer bundle if system ffmpeg not available (local dev)
+const FFMPEG_PATH = (() => {
+  try {
+    const { execSync } = require('child_process') as typeof import('child_process');
+    const p = execSync('which ffmpeg 2>/dev/null', { encoding: 'utf-8' }).trim();
+    if (p) { console.log(`[Upload] System ffmpeg: ${p}`); return p; }
+  } catch {}
+  console.log(`[Upload] Bundled ffmpeg: ${ffmpegInstaller.path}`);
+  return ffmpegInstaller.path;
+})();
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
 export const uploadRouter = Router();
 
@@ -140,6 +151,9 @@ function compressVideo(src: string, dst: string): Promise<void> {
         // Scale down to max 1080p, preserve aspect ratio
         "-vf scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
         '-max_muxing_queue_size 1024',
+        '-map 0:v:0',      // take only first video stream
+        '-map 0:a?',       // take audio if present, skip if missing
+        '-strict experimental', // allow experimental AAC encoder for HEVC/MOV from iPhone
       ])
       .output(dst)
       .on('end',   () => resolve())
@@ -181,7 +195,10 @@ uploadRouter.post(
 
     const isVideo: boolean  = file.mimetype.startsWith('video/');
     const mediaType         = isVideo ? 'video' : 'image';
-    const ext               = isVideo ? '.mp4' : (path.extname(file.originalname) || '.jpg');
+    // Keep original extension for input (iPhone sends .mov, Android .mp4)
+    // Output is always .mp4 (H.264)
+    const origExt = path.extname(file.originalname).toLowerCase() || (isVideo ? '.mp4' : '.jpg');
+    const ext     = isVideo ? origExt : origExt;
     const tmpIn             = path.join(os.tmpdir(), `mpy_in_${Date.now()}${ext}`);
     const tmpOut            = path.join(os.tmpdir(), `mpy_out_${Date.now()}${ext}`);
 
