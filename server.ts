@@ -49,6 +49,7 @@ app.use(cors({
 }));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));  // 50mb — bulk migration with base64
+// Note: /upload/media uses multipart/form-data handled by multer (850 MB limit)
 app.use(express.urlencoded({ extended: true }));
 
 // ── Routes ────────────────────────────────────────────────────────────────────

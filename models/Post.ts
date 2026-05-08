@@ -10,6 +10,7 @@ export interface IPost extends Document {
   body:       string;
   photoUrl:   string | null;
   photoPublicId: string | null;
+  mediaType:  'image' | 'video' | null;
   authorName: string;
   avatarB64:  string | null;
   syncedAt:   Date;
@@ -25,6 +26,7 @@ const PostSchema = new Schema<IPost>(
     body:       { type: String, default: '' },
     photoUrl:   { type: String, default: null },
     photoPublicId: { type: String, default: null },
+    mediaType:  { type: String, enum: ['image', 'video'], default: null },
     authorName: { type: String, default: '' },
     avatarB64:  { type: String, default: null },
     syncedAt:   { type: Date, default: Date.now },

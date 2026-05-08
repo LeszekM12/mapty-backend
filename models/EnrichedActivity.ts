@@ -10,6 +10,7 @@ export interface IEnrichedActivity extends Document {
   description: string;
   photoUrl:    string | null;
   photoPublicId: string | null;
+  mediaType:   'image' | 'video' | null;
   distanceKm:  number;
   durationSec: number;
   paceMinKm:   number;
@@ -30,6 +31,7 @@ const EnrichedActivitySchema = new Schema<IEnrichedActivity>(
     description: { type: String, default: '' },
     photoUrl:    { type: String, default: null },
     photoPublicId: { type: String, default: null },
+    mediaType:   { type: String, enum: ['image', 'video'], default: null },
     distanceKm:  { type: Number, default: 0 },
     durationSec: { type: Number, default: 0 },
     paceMinKm:   { type: Number, default: 0 },
