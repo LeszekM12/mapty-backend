@@ -112,7 +112,7 @@ async function pickAccount(): Promise<CloudinaryAccount> {
 
 // ── multer — memory storage, 850 MB hard limit ────────────────────────────────
 
-const MAX_BYTES = 850 * 1024 * 1024;
+const MAX_BYTES = 500 * 1024 * 1024;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -134,8 +134,8 @@ function compressVideo(src: string, dst: string): Promise<void> {
       .videoCodec('libx264')
       .audioCodec('aac')
       .outputOptions([
-        '-crf 28',
-        '-preset fast',
+        '-crf 32',
+        '-preset ultrafast',
         '-movflags +faststart',
         // Scale down to max 1080p, preserve aspect ratio
         "-vf scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease",
