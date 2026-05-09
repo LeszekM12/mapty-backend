@@ -252,14 +252,15 @@ uploadRouter.post(
 // ── DELETE /upload/media ──────────────────────────────────────────────────────
 
 uploadRouter.delete('/media', async (req: Request, res: Response) => {
-  const { publicId, accountIndex } = req.body as {
-    publicId?: string; accountIndex?: number;
+  const { publicId, accountIndex, isVideo: isVideoBody } = req.body as {
+    publicId?: string; accountIndex?: number; isVideo?: boolean;
   };
   if (!publicId) {
     return void res.status(400).json({ status: 'error', message: 'publicId required' });
   }
 
-  const isVideo      = publicId.includes('/video/');
+  // Use explicit isVideo flag if provided, otherwise detect from publicId path
+  const isVideo      = isVideoBody ?? publicId.includes('/video/');
   const resourceType = isVideo ? 'video' : 'image';
 
   const order = accountIndex
