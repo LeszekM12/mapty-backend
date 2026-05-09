@@ -16,6 +16,16 @@ import { sendToSubscriptions } from './pushService.js';
 
 export const liveRouter = Router();
 
+// Suppress verbose logs for high-frequency polling endpoints
+liveRouter.use((req, _res, next) => {
+  const silent = req.method === 'GET' && (
+    req.path.startsWith('/active/') ||
+    req.path.startsWith('/status/')
+  );
+  if (!silent) console.log(`[Live] ${req.method} ${req.path}`);
+  next();
+});
+
 // ── Invite kody (in-memory — krótkotrwałe, OK) ───────────────────────────────
 
 interface InviteRecord {
@@ -231,7 +241,7 @@ liveRouter.get('/active/:endpoint', async (req: Request, res: Response) => {
   });
 
   if (!s) return void res.json({ status: 'ok', active: false, token: null });
-  res.json({ status: 'ok', active: true, token: s.token, userName: s.userName, session: s.status });
+  res.json({ status: 'ok', active: true, token: s.token, userName: s.userName, session: s.status, userId: s.userId });
 });
 
 // ── GET /live — diagnostics ───────────────────────────────────────────────────

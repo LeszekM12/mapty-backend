@@ -123,19 +123,18 @@ usersRouter.post('/:userId/friends/:friendId', async (req: Request, res: Respons
   );
   if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
 
-  // 2. Add me to friend's pendingFriends queue (so they auto-add me on next app open)
-  // Only add if not already friends (avoid duplicate pending)
+  // 2. Add me to friend's pendingFriends ONLY if they don't know me yet
+  // Check both friends list AND pendingFriends to avoid loops
   const friend = await User.findOne({ userId: friendId });
   if (friend) {
-    const alreadyFriends = (friend.friends ?? []).includes(userId);
-    if (!alreadyFriends) {
+    const alreadyFriends  = (friend.friends ?? []).includes(userId);
+    const alreadyPending  = (friend.pendingFriends ?? []).some(
+      (p: { userId: string }) => p.userId === userId
+    );
+    if (!alreadyFriends && !alreadyPending) {
       await User.findOneAndUpdate(
         { userId: friendId },
-        {
-          $addToSet: {
-            pendingFriends: { userId, name: user.name ?? 'MapYou User' },
-          },
-        },
+        { $addToSet: { pendingFriends: { userId, name: user.name ?? 'MapYou User' } } },
       );
       console.log(`[Users] Added ${userId} to ${friendId}'s pendingFriends`);
     }
