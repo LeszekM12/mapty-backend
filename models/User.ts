@@ -12,6 +12,7 @@ export interface IUser extends Document {
   weeklyWins:   number;
   bestStreak:   number;
   clubs:        string[]; // clubId[]
+  pendingFriends: { userId: string; name: string }[]; // auto-add queue
   createdAt:    Date;
   updatedAt:    Date;
 }
@@ -28,6 +29,10 @@ const UserSchema = new Schema<IUser>(
     weeklyWins: { type: Number, default: 0 },
     bestStreak: { type: Number, default: 0 },
     clubs:     [{ type: String }],
+    pendingFriends: [{
+      userId: { type: String },
+      name:   { type: String },
+    }],
   },
   {
     timestamps: true,

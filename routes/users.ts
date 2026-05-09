@@ -113,13 +113,61 @@ usersRouter.put('/:userId', async (req: Request, res: Response) => {
 
 // POST /users/:userId/friends/:friendId — dodaj znajomego
 usersRouter.post('/:userId/friends/:friendId', async (req: Request, res: Response) => {
+  const { userId, friendId } = req.params;
+
+  // 1. Add friendId to my friends list
   const user = await User.findOneAndUpdate(
-    { userId: req.params.userId },
-    { $addToSet: { friends: req.params.friendId } },
+    { userId },
+    { $addToSet: { friends: friendId } },
     { new: true },
   );
   if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
+
+  // 2. Add me to friend's pendingFriends queue (so they auto-add me on next app open)
+  // Only add if not already friends (avoid duplicate pending)
+  const friend = await User.findOne({ userId: friendId });
+  if (friend) {
+    const alreadyFriends = (friend.friends ?? []).includes(userId);
+    if (!alreadyFriends) {
+      await User.findOneAndUpdate(
+        { userId: friendId },
+        {
+          $addToSet: {
+            pendingFriends: { userId, name: user.name ?? 'MapYou User' },
+          },
+        },
+      );
+      console.log(`[Users] Added ${userId} to ${friendId}'s pendingFriends`);
+    }
+  }
+
   res.json({ status: 'ok', data: user });
+});
+
+// GET /users/:userId/pending-friends — pobierz i wyczyść pending queue
+usersRouter.get('/:userId/pending-friends', async (req: Request, res: Response) => {
+  const user = await User.findOne({ userId: req.params.userId });
+  if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
+
+  const pending = user.pendingFriends ?? [];
+  if (pending.length === 0) {
+    return void res.json({ status: 'ok', data: [] });
+  }
+
+  // Clear pending queue atomically — return what was there
+  await User.findOneAndUpdate(
+    { userId: req.params.userId },
+    { $set: { pendingFriends: [] } },
+  );
+
+  // Also add them as friends in Atlas automatically
+  await User.findOneAndUpdate(
+    { userId: req.params.userId },
+    { $addToSet: { friends: { $each: pending.map((p: { userId: string }) => p.userId) } } },
+  );
+
+  console.log(`[Users] Auto-added ${pending.length} pending friends for ${req.params.userId}`);
+  res.json({ status: 'ok', data: pending });
 });
 
 // DELETE /users/:userId/friends/:friendId — usuń znajomego
