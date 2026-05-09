@@ -27,57 +27,64 @@ const PORT = process.env.PORT ?? 3000;
 // ── CORS ──────────────────────────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = [
-  'https://leszekm12.github.io',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:8080',
-  ...(process.env.EXTRA_ORIGINS ? process.env.EXTRA_ORIGINS.split(',') : []),
+    'https://leszekm12.github.io',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:8080',
+    ...(process.env.EXTRA_ORIGINS ? process.env.EXTRA_ORIGINS.split(',') : []),
 ];
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.use(helmet());
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);           // curl / Postman / PWA
-    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    cb(new Error(`CORS: origin ${origin} not allowed`));
-  },
-  methods:      ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials:  true,
+    origin: (origin, cb) => {
+        if (!origin) return cb(null, true);           // curl / Postman / PWA
+        if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    methods:      ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials:  true,
 }));
-app.use(morgan('dev'));
+// Skip logging for high-frequency polling endpoints
+app.use(morgan('dev', {
+    skip: (req) => {
+        const p = req.path;
+        return p.startsWith('/live/active/') ||
+            p.startsWith('/live/status/') ||
+            (p.startsWith('/live/') && req.method === 'GET');
+    }
+}));
 app.use(express.json({ limit: '50mb' }));  // 50mb — bulk migration with base64
-// Note: /upload/media uses multipart/form-data handled by multer (850 MB limit)
 app.use(express.urlencoded({ extended: true }));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.get('/', (_req: Request, res: Response) => {
-  res.json({
-    name:    'MapYou API',
-    version: '2.0.0',
-    status:  'running',
-    db:      'MongoDB Atlas',
-    endpoints: {
-      workouts:          '/workouts',
-      activities:        '/activities',
-      enrichedActivities:'/enriched-activities',
-      unifiedWorkouts:   '/unified-workouts',
-      users:             '/users',
-      posts:             '/posts',
-      clubs:             '/clubs',
-      notifications:     '/notifications',
-      records:           '/records',
-      push:              '/push',
-      live:              '/live',
-    },
-  });
+    res.json({
+        name:    'MapYou API',
+        version: '2.0.0',
+        status:  'running',
+        db:      'MongoDB Atlas',
+        endpoints: {
+            workouts:          '/workouts',
+            activities:        '/activities',
+            enrichedActivities:'/enriched-activities',
+            unifiedWorkouts:   '/unified-workouts',
+            users:             '/users',
+            posts:             '/posts',
+            clubs:             '/clubs',
+            notifications:     '/notifications',
+            records:           '/records',
+            push:              '/push',
+            live:              '/live',
+        },
+    });
 });
 
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', uptime: process.uptime(), db: 'connected' });
+    res.json({ status: 'ok', uptime: process.uptime(), db: 'connected' });
 });
 
 app.use('/workouts',           workoutsRouter);
@@ -99,25 +106,25 @@ app.use('/upload',             uploadRouter);
 // ── 404 ───────────────────────────────────────────────────────────────────────
 
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({ status: 'error', message: 'Route not found' });
+    res.status(404).json({ status: 'error', message: 'Route not found' });
 });
 
 // ── Global error handler ──────────────────────────────────────────────────────
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[Error]', err.message);
-  const status = err.message.startsWith('CORS') ? 403 : 500;
-  res.status(status).json({ status: 'error', message: err.message });
+    console.error('[Error]', err.message);
+    const status = err.message.startsWith('CORS') ? 403 : 500;
+    res.status(status).json({ status: 'error', message: err.message });
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 (async () => {
-  await connectDB();
-  app.listen(PORT, () => {
-    console.log(`✅ MapYou backend v2 running on port ${PORT}`);
-    console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
-  });
+    await connectDB();
+    app.listen(PORT, () => {
+        console.log(`✅ MapYou backend v2 running on port ${PORT}`);
+        console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+    });
 })();
 
 export default app;
