@@ -50,10 +50,10 @@ app.use(cors({
 // Skip logging for high-frequency polling endpoints
 app.use(morgan('dev', {
     skip: (req) => {
-        const p = req.path;
-        return p.startsWith('/live/active/') ||
-            p.startsWith('/live/status/') ||
-            (p.startsWith('/live/') && req.method === 'GET');
+        const url = req.originalUrl ?? req.url ?? '';
+        return url.includes('/live/active/') ||
+               url.includes('/live/status/') ||
+               (url.includes('/live/') && req.method === 'GET');
     }
 }));
 app.use(express.json({ limit: '50mb' }));  // 50mb — bulk migration with base64
