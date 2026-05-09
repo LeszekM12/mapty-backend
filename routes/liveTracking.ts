@@ -161,6 +161,7 @@ liveRouter.get('/status/:token', async (req: Request, res: Response) => {
     status:    'ok',
     token:     s.token,
     userName:  s.userName,
+    userId:    s.userId,    // ← needed for client to match session to correct friend
     session:   s.status,
     startedAt: s.startedAt,
     updatedAt: s.updatedAt,
