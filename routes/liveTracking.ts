@@ -3,7 +3,7 @@
 // Tylko push notification idą przez MongoDB
 
 import { Router, Request, Response } from 'express';
-import webpush from 'web-push';
+import { sendToSubscriptions } from './pushService.js';
 import { PushSubscription } from '../models/PushSubscription.js';
 
 export const liveRouter = Router();
@@ -29,8 +29,9 @@ export interface LiveSession {
 
 // ── In-memory stores ──────────────────────────────────────────────────────────
 
-const sessions       = new Map<string, LiveSession>();
-const endpointToToken = new Map<string, string>();
+const sessions        = new Map<string, LiveSession>();
+const endpointToToken = new Map<string, string>(); // pushEndpoint → token
+const userIdToToken   = new Map<string, string>(); // userId → token
 
 // Czyść zakończone sesje po 30 min
 setInterval(() => {
@@ -59,8 +60,8 @@ function randomCode(): string {
 // ── POST /live/start ──────────────────────────────────────────────────────────
 
 liveRouter.post('/start', async (req: Request, res: Response) => {
-  const { token, userName, liveUrl, friendSubs } = req.body as {
-    token: string; userName: string; liveUrl: string;
+  const { token, userName, liveUrl, friendSubs, myUserId } = req.body as {
+    token: string; userName: string; liveUrl: string; myUserId?: string;
     friendSubs: Array<{ endpoint: string; expirationTime: number | null; keys: { p256dh: string; auth: string } }>;
   };
 
@@ -75,25 +76,44 @@ liveRouter.post('/start', async (req: Request, res: Response) => {
   };
   sessions.set(token, session);
 
-  // Wyślij push do znajomych
+  // Wyślij push do znajomych — używaj sendToSubscriptions (ma VAPID, obsługuje APNs/FCM)
   if (Array.isArray(friendSubs) && friendSubs.length) {
-    const payload = JSON.stringify({
+    const payload = {
       title: `🏃 ${userName} started a workout!`,
-      body: 'Tap to watch the live route.',
-      url: liveUrl ?? '/',
-      icon: '/public/icon-192.png',
-    });
-    const results = await Promise.allSettled(
-      friendSubs.map(sub =>
-        webpush.sendNotification(
-          { endpoint: sub.endpoint, expirationTime: sub.expirationTime ?? undefined, keys: sub.keys },
-          payload,
-        )
-      )
+      body:  'Tap to watch the live route.',
+      url:   liveUrl ?? '/',
+      icon:  '/public/icon-192.png',
+    };
+
+    // Filter out local: fake subs — only send to real push endpoints
+    const realSubs = friendSubs.filter(s =>
+      s.endpoint && !s.endpoint.startsWith('local:')
     );
-    session.notifiedSubs = friendSubs.map(s => s.endpoint);
-    for (const sub of friendSubs) endpointToToken.set(sub.endpoint, token);
-    console.log(`[Live] Push sent to ${results.filter(r => r.status === 'fulfilled').length}/${friendSubs.length} friends`);
+
+    if (realSubs.length) {
+      // Map to format expected by sendToSubscriptions
+      const subDocs = realSubs.map(s => ({
+        subId:          s.endpoint,
+        endpoint:       s.endpoint,
+        expirationTime: s.expirationTime,
+        keys:           s.keys,
+      }));
+      const { sent, failed } = await sendToSubscriptions(subDocs, payload);
+      console.log(`[Live] Push sent: ${sent} ok, ${failed} failed`);
+    }
+
+    // Register all endpoints (real + local userId) in endpointToToken for polling
+    for (const sub of friendSubs) {
+      if (!sub.endpoint.startsWith('local:')) {
+        endpointToToken.set(sub.endpoint, token);
+      }
+    }
+  }
+
+  // Map userId → token so friends without push sub can still detect live
+  if (myUserId) {
+    userIdToToken.set(myUserId, token);
+    console.log(`[Live] Mapped userId ${myUserId} → token ${token}`);
   }
 
   console.log(`[Live] Session started: ${token} by ${userName}`);
@@ -160,6 +180,9 @@ liveRouter.post('/finish', (req: Request, res: Response) => {
   for (const [ep, t] of endpointToToken.entries()) {
     if (t === req.body.token) endpointToToken.delete(ep);
   }
+  for (const [uid, t] of userIdToToken.entries()) {
+    if (t === req.body.token) userIdToToken.delete(uid);
+  }
   res.json({ status: 'ok' });
 });
 
@@ -167,11 +190,15 @@ liveRouter.post('/finish', (req: Request, res: Response) => {
 
 liveRouter.get('/active/:endpoint', (req: Request, res: Response) => {
   const endpoint = decodeURIComponent(req.params.endpoint);
-  const token    = endpointToToken.get(endpoint);
+
+  // Check by push endpoint first, then by userId (for local: friends without push sub)
+  const token = endpointToToken.get(endpoint) ?? userIdToToken.get(endpoint);
   if (!token) return void res.json({ status: 'ok', active: false, token: null });
+
   const s = sessions.get(token);
   if (!s || s.status === 'finished') {
     endpointToToken.delete(endpoint);
+    userIdToToken.delete(endpoint);
     return void res.json({ status: 'ok', active: false, token: null });
   }
   res.json({ status: 'ok', active: true, token, userName: s.userName, session: s.status });
