@@ -33,12 +33,22 @@ const sessions        = new Map<string, LiveSession>();
 const endpointToToken = new Map<string, string>(); // pushEndpoint → token
 const userIdToToken   = new Map<string, string>(); // userId → token
 
-// Czyść zakończone sesje po 30 min
+// Cleanup: remove finished sessions after 30min, force-finish stale sessions after 2h
 setInterval(() => {
   const now = Date.now();
   for (const [token, s] of sessions.entries()) {
+    // Remove finished sessions after 30 min
     if (s.status === 'finished' && now - s.updatedAt > 30 * 60 * 1000) {
       sessions.delete(token);
+      for (const [ep, t] of endpointToToken.entries()) { if (t === token) endpointToToken.delete(ep); }
+      for (const [uid, t] of userIdToToken.entries())  { if (t === token) userIdToToken.delete(uid); }
+      continue;
+    }
+    // Force-finish sessions with no update for 2 hours (phone died, app crashed, etc.)
+    if (s.status !== 'finished' && now - s.updatedAt > 2 * 60 * 60 * 1000) {
+      s.status    = 'finished';
+      s.updatedAt = now;
+      console.log(`[Live] Force-finished stale session: ${token} (${s.userName})`);
     }
   }
 }, 5 * 60 * 1000);
@@ -142,14 +152,17 @@ liveRouter.post('/update', (req: Request, res: Response) => {
 
 liveRouter.get('/status/:token', (req: Request, res: Response) => {
   const s = sessions.get(req.params.token);
-  if (!s) return void res.status(404).json({ status: 'error', message: 'Session not found' });
+  // Return 'finished' instead of 404 — client clears token and stops polling
+  if (!s) return void res.json({ status: 'ok', token: req.params.token,
+    session: 'finished', userName: '', startedAt: 0, updatedAt: 0, current: null, history: [] });
   res.json({ status: 'ok', token: s.token, userName: s.userName, session: s.status,
     startedAt: s.startedAt, updatedAt: s.updatedAt, current: s.current, history: s.history });
 });
 
 liveRouter.get('/:token', (req: Request, res: Response) => {
   const s = sessions.get(req.params.token);
-  if (!s) return void res.json({ status: 'ok', session: 'not_found' });
+  // Return 'finished' so client clears the stale token
+  if (!s) return void res.json({ status: 'ok', session: 'finished' });
   res.json({ status: 'ok', session: s.status, userName: s.userName, updatedAt: s.updatedAt });
 });
 
