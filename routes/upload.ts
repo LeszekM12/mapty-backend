@@ -138,6 +138,7 @@ function compressVideo(src: string, dst: string): Promise<void> {
       .videoCodec('libx264')
       .audioCodec('aac')
       .outputOptions([
+        '-threads 0',   // use all available CPU cores automatically
         '-crf 32',
         '-preset ultrafast',
         '-movflags +faststart',
