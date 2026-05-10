@@ -65,10 +65,6 @@ const ACCOUNTS: CloudinaryAccount[] = [
 // Survives between requests, resets when Admin API refreshes the real figure.
 const localAdded = [0, 0, 0]; // index 0 = account 1, etc.
 
-// ── TEST MODE: simulate account 1 at 99% to verify rotation ─────────────────
-// Remove these lines after testing
-ACCOUNTS[0].usageBytes = Math.round(25 * 1024 ** 3 * 0.991); // simulate 99.1% full
-ACCOUNTS[0].lastCheck  = Date.now(); // prevent Admin API from resetting it
 
 const LIMIT_BYTES      = 25 * 1024 ** 3; // 25 GB
 const SWITCH_THRESHOLD = 0.99;            // switch at 99%
