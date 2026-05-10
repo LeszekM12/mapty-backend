@@ -69,7 +69,7 @@ reelsRouter.get('/feed', async (req: Request, res: Response) => {
   const reels = await Reel.find({
     userId:    { $in: allIds },
     expiresAt: { $gt: now },
-  }).sort({ createdAt: -1 });
+  }).sort({ createdAt: 1 }); // oldest first → viewer plays 1→2→3
 
   // Grupuj po userId — każdy user jako osobna lista reelsów
   const byUser: Record<string, typeof reels> = {};
