@@ -71,6 +71,12 @@ reelsRouter.get('/feed', async (req: Request, res: Response) => {
     expiresAt: { $gt: now },
   }).sort({ createdAt: 1 }); // oldest first → viewer plays 1→2→3
 
+  // Pobierz avatary z User collection (nie duplikujemy avatarów w reelsach)
+  const userIds   = [...new Set(reels.map(r => r.userId))];
+  const users     = await User.find({ userId: { $in: userIds } }).select('userId avatarB64 name');
+  const avatarMap = new Map(users.map(u => [u.userId, u.avatarB64]));
+  const nameMap   = new Map(users.map(u => [u.userId, u.name]));
+
   // Grupuj po userId — każdy user jako osobna lista reelsów
   const byUser: Record<string, typeof reels> = {};
   for (const r of reels) {
@@ -81,8 +87,8 @@ reelsRouter.get('/feed', async (req: Request, res: Response) => {
   // Zwróć jako tablicę userów z ich reelsami
   const result = Object.entries(byUser).map(([uid, userReels]) => ({
     userId:     uid,
-    authorName: userReels[0].authorName,
-    avatarB64:  userReels[0].avatarB64,
+    authorName: nameMap.get(uid) ?? userReels[0].authorName,
+    avatarB64:  avatarMap.get(uid) ?? null,
     reels:      userReels,
     hasUnseen:  userReels.some(r => !r.views.includes(userId)),
   }));
