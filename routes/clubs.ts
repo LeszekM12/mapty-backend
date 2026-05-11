@@ -29,10 +29,13 @@ clubsRouter.post('/', async (req: Request, res: Response) => {
   if (!body.clubId || !body.ownerId || !body.name) {
     return void res.status(400).json({ status: 'error', message: 'clubId, ownerId, name required' });
   }
+  // Extract members separately to avoid $set/$addToSet conflict on same field
+  const { members: _m, ...bodyWithoutMembers } = body as Record<string,unknown> & { members?: unknown };
+  void _m;
   const club = await Club.findOneAndUpdate(
     { clubId: body.clubId as string },
     {
-      $set: body,
+      $set: bodyWithoutMembers,
       $addToSet: { members: body.ownerId },
     },
     { upsert: true, new: true },
