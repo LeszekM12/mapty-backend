@@ -24,7 +24,7 @@ const ClubSchema = new Schema<IClub>(
     description: { type: String, default: '' },
     sport:       { type: String, default: 'running' },
     avatarB64:   { type: String, default: null },
-    city:        { type: String, required: true, default: '' },
+    city:        { type: String, default: '' },
     region:      { type: String, default: '' },
     members:     [{ type: String }],
     posts:       [{ type: String }],
