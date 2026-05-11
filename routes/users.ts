@@ -81,6 +81,80 @@ usersRouter.delete('/:userId/follow/:targetId', async (req: Request, res: Respon
   res.json({ status: 'ok', following: false });
 });
 
+// GET /users/search?q=name&exclude=userId — szukaj użytkowników po nazwie
+usersRouter.get('/search', async (req: Request, res: Response) => {
+  const { q, exclude } = req.query as { q?: string; exclude?: string };
+  if (!q || q.trim().length < 1) {
+    return void res.json({ status: 'ok', data: [] });
+  }
+  const regex = new RegExp(q.trim(), 'i');
+  const users = await User.find({
+    name:   { $regex: regex },
+    userId: { $ne: exclude ?? '' },
+  }).select('userId name bio avatarB64 city region followers following').limit(30);
+
+  res.json({ status: 'ok', data: users.map(u => ({
+    userId:       u.userId,
+    name:         u.name,
+    bio:          u.bio,
+    avatarB64:    u.avatarB64,
+    city:         u.city ?? '',
+    region:       u.region ?? '',
+    followersCount: (u.followers ?? []).length,
+    followingCount: (u.following ?? []).length,
+  })) });
+});
+
+// GET /users/suggestions?userId=xxx — znajomi znajomych (2 stopnie)
+usersRouter.get('/suggestions', async (req: Request, res: Response) => {
+  const { userId } = req.query as { userId?: string };
+  if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
+
+  const me = await User.findOne({ userId });
+  if (!me) return void res.status(404).json({ status: 'error', message: 'User not found' });
+
+  const myFriends    = me.friends   ?? [];
+  const myFollowing  = (me.following as string[] | undefined) ?? [];
+  const myConnections = [...new Set([...myFriends, ...myFollowing])];
+  const alreadyKnown = new Set([userId, ...myConnections]);
+
+  // Stopień 2 — znajomi moich znajomych
+  const degree2Set = new Set<string>();
+  if (myConnections.length > 0) {
+    const connections = await User.find({ userId: { $in: myConnections } })
+      .select('friends following');
+    for (const conn of connections) {
+      for (const f of [...(conn.friends ?? []), ...((conn.following as string[] | undefined) ?? [])]) {
+        if (!alreadyKnown.has(f)) degree2Set.add(f);
+      }
+    }
+  }
+
+  const suggestionIds = [...degree2Set].slice(0, 20);
+  
+  // Fallback — jeśli za mało sugestii, dodaj najnowszych użytkowników
+  let suggestions = await User.find({ userId: { $in: suggestionIds } })
+    .select('userId name bio avatarB64 city region followers following');
+
+  if (suggestions.length < 10) {
+    const fallback = await User.find({ userId: { $nin: [...alreadyKnown] } })
+      .sort({ createdAt: -1 }).limit(20 - suggestions.length)
+      .select('userId name bio avatarB64 city region followers following');
+    const fallbackIds = new Set(suggestions.map(u => u.userId));
+    suggestions = [...suggestions, ...fallback.filter(u => !fallbackIds.has(u.userId))];
+  }
+
+  res.json({ status: 'ok', data: suggestions.map(u => ({
+    userId:       u.userId,
+    name:         u.name,
+    bio:          u.bio,
+    avatarB64:    u.avatarB64,
+    city:         u.city ?? '',
+    region:       u.region ?? '',
+    followersCount: (u.followers ?? []).length,
+  })) });
+});
+
 // GET /users/:userId
 usersRouter.get('/:userId', async (req: Request, res: Response) => {
   const user = await User.findOne({ userId: req.params.userId });
@@ -113,60 +187,13 @@ usersRouter.put('/:userId', async (req: Request, res: Response) => {
 
 // POST /users/:userId/friends/:friendId — dodaj znajomego
 usersRouter.post('/:userId/friends/:friendId', async (req: Request, res: Response) => {
-  const { userId, friendId } = req.params;
-
-  // 1. Add friendId to my friends list
   const user = await User.findOneAndUpdate(
-    { userId },
-    { $addToSet: { friends: friendId } },
+    { userId: req.params.userId },
+    { $addToSet: { friends: req.params.friendId } },
     { new: true },
   );
   if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
-
-  // 2. Add me to friend's pendingFriends ONLY if they don't know me yet
-  // Check both friends list AND pendingFriends to avoid loops
-  const friend = await User.findOne({ userId: friendId });
-  if (friend) {
-    const alreadyFriends  = (friend.friends ?? []).includes(userId);
-    const alreadyPending  = (friend.pendingFriends ?? []).some(
-      (p: { userId: string }) => p.userId === userId
-    );
-    if (!alreadyFriends && !alreadyPending) {
-      await User.findOneAndUpdate(
-        { userId: friendId },
-        { $addToSet: { pendingFriends: { userId, name: user.name ?? 'MapYou User' } } },
-      );
-      console.log(`[Users] Added ${userId} to ${friendId}'s pendingFriends`);
-    }
-  }
-
   res.json({ status: 'ok', data: user });
-});
-
-// GET /users/:userId/pending-friends — pobierz i wyczyść pending queue
-usersRouter.get('/:userId/pending-friends', async (req: Request, res: Response) => {
-  const user = await User.findOne({ userId: req.params.userId });
-  if (!user) return void res.status(404).json({ status: 'error', message: 'User not found' });
-
-  const pending = user.pendingFriends ?? [];
-  if (pending.length === 0) {
-    return void res.json({ status: 'ok', data: [] });
-  }
-
-  // Clear pending queue atomically — return what was there
-  await User.findOneAndUpdate(
-    { userId: req.params.userId },
-    { $set: { pendingFriends: [] } },
-  );
-
-  // Also add them as friends in Atlas automatically
-  await User.findOneAndUpdate(
-    { userId: req.params.userId },
-    { $addToSet: { friends: { $each: pending.map((p: { userId: string }) => p.userId) } } },
-  );
-
-  console.log(`[Users] Auto-added ${pending.length} pending friends for ${req.params.userId}`);
-  res.json({ status: 'ok', data: pending });
 });
 
 // DELETE /users/:userId/friends/:friendId — usuń znajomego

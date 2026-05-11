@@ -8,6 +8,8 @@ export interface IClub extends Document {
   description: string;
   sport:       string;
   avatarB64:   string | null;
+  city:        string;    // required
+  region:      string;    // auto-filled from city — used for location search
   members:     string[];  // userId[]
   posts:       string[];  // postId[]
   createdAt:   Date;
@@ -22,6 +24,8 @@ const ClubSchema = new Schema<IClub>(
     description: { type: String, default: '' },
     sport:       { type: String, default: 'running' },
     avatarB64:   { type: String, default: null },
+    city:        { type: String, required: true, default: '' },
+    region:      { type: String, default: '' },
     members:     [{ type: String }],
     posts:       [{ type: String }],
   },

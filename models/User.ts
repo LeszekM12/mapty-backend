@@ -12,7 +12,12 @@ export interface IUser extends Document {
   weeklyWins:   number;
   bestStreak:   number;
   clubs:        string[]; // clubId[]
-  pendingFriends: { userId: string; name: string }[]; // auto-add queue
+  pendingFriends: { userId: string; name: string }[];
+  city:         string;
+  region:       string;
+  birthDate:    string | null;
+  gender:       'male' | 'female' | 'other' | null;
+  weightKg:     number | null;
   createdAt:    Date;
   updatedAt:    Date;
 }
@@ -28,11 +33,13 @@ const UserSchema = new Schema<IUser>(
     following:  [{ type: String }],
     weeklyWins: { type: Number, default: 0 },
     bestStreak: { type: Number, default: 0 },
-    clubs:     [{ type: String }],
-    pendingFriends: [{
-      userId: { type: String },
-      name:   { type: String },
-    }],
+    clubs:      [{ type: String }],
+    pendingFriends: [{ userId: { type: String }, name: { type: String } }],
+    city:      { type: String, default: '' },
+    region:    { type: String, default: '' },
+    birthDate: { type: String, default: null },
+    gender:    { type: String, default: null },
+    weightKg:  { type: Number, default: null },
   },
   {
     timestamps: true,
