@@ -8,9 +8,9 @@ export const clubsRouter = Router();
 clubsRouter.get('/', async (req: Request, res: Response) => {
   const { q, city, region, sport } = req.query as { q?: string; city?: string; region?: string; sport?: string };
   const filter: Record<string, unknown> = {};
-  if (q)      filter['$or'] = [{ name: { $regex: new RegExp(q.trim(), 'i') } }, { city: { $regex: new RegExp(q.trim(), 'i') } }];
-  if (region) filter['region'] = { $regex: new RegExp(region.trim(), 'i') };
-  if (city && !region)   filter['city'] = { $regex: new RegExp(city.trim(), 'i') };
+  if (q)      filter['$or'] = [{ name: { $regex: new RegExp(q.trim(), 'i') } }, { city: { $regex: new RegExp(q.trim(), 'i') } }, { location: { $regex: new RegExp(q.trim(), 'i') } }];
+  if (region) filter['$or'] = [{ region: { $regex: new RegExp(region.trim(), 'i') } }, { location: { $regex: new RegExp(region.trim(), 'i') } }];
+  if (city && !region)   filter['$or'] = [{ city: { $regex: new RegExp(city.trim(), 'i') } }, { location: { $regex: new RegExp(city.trim(), 'i') } }];
   if (sport)  filter['sport'] = sport;
   const clubs = await Club.find(filter).sort({ createdAt: -1 }).limit(50);
   res.json({ status: 'ok', count: clubs.length, data: clubs });
@@ -26,8 +26,8 @@ clubsRouter.get('/:id', async (req: Request, res: Response) => {
 // POST /clubs — utwórz klub
 clubsRouter.post('/', async (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
-  if (!body.clubId || !body.ownerId || !body.name || !body.city) {
-    return void res.status(400).json({ status: 'error', message: 'clubId, ownerId, name, city required' });
+  if (!body.clubId || !body.ownerId || !body.name) {
+    return void res.status(400).json({ status: 'error', message: 'clubId, ownerId, name required' });
   }
   const club = await Club.findOneAndUpdate(
     { clubId: body.clubId as string },
