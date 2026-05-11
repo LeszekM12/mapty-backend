@@ -8,12 +8,48 @@ export const clubsRouter = Router();
 clubsRouter.get('/', async (req: Request, res: Response) => {
   const { q, city, region, sport } = req.query as { q?: string; city?: string; region?: string; sport?: string };
   const filter: Record<string, unknown> = {};
-  if (q)      filter['$or'] = [{ name: { $regex: new RegExp(q.trim(), 'i') } }, { city: { $regex: new RegExp(q.trim(), 'i') } }, { location: { $regex: new RegExp(q.trim(), 'i') } }];
-  if (region) filter['$or'] = [{ region: { $regex: new RegExp(region.trim(), 'i') } }, { location: { $regex: new RegExp(region.trim(), 'i') } }];
-  if (city && !region)   filter['$or'] = [{ city: { $regex: new RegExp(city.trim(), 'i') } }, { location: { $regex: new RegExp(city.trim(), 'i') } }];
-  if (sport)  filter['sport'] = sport;
+  const locConditions = city && !region
+    ? [{ city: { $regex: new RegExp(city.trim(), 'i') } }, { location: { $regex: new RegExp(city.trim(), 'i') } }]
+    : region
+      ? [{ region: { $regex: new RegExp(region.trim(), 'i') } }, { location: { $regex: new RegExp(region.trim(), 'i') } }]
+      : null;
+  const nameConditions = q
+    ? [{ name: { $regex: new RegExp(q.trim(), 'i') } }, { city: { $regex: new RegExp(q.trim(), 'i') } }, { location: { $regex: new RegExp(q.trim(), 'i') } }]
+    : null;
+  if (nameConditions && locConditions) {
+    filter['$and'] = [{ $or: nameConditions }, { $or: locConditions }];
+  } else if (nameConditions) {
+    filter['$or'] = nameConditions;
+  } else if (locConditions) {
+    filter['$or'] = locConditions;
+  }
+  if (sport) filter['sport'] = sport;
   const clubs = await Club.find(filter).sort({ createdAt: -1 }).limit(50);
   res.json({ status: 'ok', count: clubs.length, data: clubs });
+});
+
+// GET /clubs/:id/feed — activities and posts shared to this club
+clubsRouter.get('/:id/feed', async (req: Request, res: Response) => {
+  const { EnrichedActivity } = await import('../models/EnrichedActivity.js');
+  const { Post }             = await import('../models/Post.js');
+  const { User }             = await import('../models/User.js');
+
+  const [activities, posts] = await Promise.all([
+    EnrichedActivity.find({ clubIds: req.params.id }).sort({ date: -1 }).limit(50),
+    Post.find({ clubIds: req.params.id }).sort({ date: -1 }).limit(50),
+  ]);
+
+  const userIds  = [...new Set([...activities.map(a => a.userId), ...posts.map(p => p.userId)])];
+  const users    = await User.find({ userId: { $in: userIds } }).select('userId name avatarB64');
+  const nameMap  = new Map(users.map(u => [u.userId, u.name]));
+  const avMap    = new Map(users.map(u => [u.userId, u.avatarB64]));
+
+  const feed = [
+    ...activities.map(a => ({ kind: 'activity', date: a.date, data: { ...a.toObject(), authorName: nameMap.get(a.userId) ?? '', authorAvatarUrl: avMap.get(a.userId) ?? null } })),
+    ...posts.map(p =>     ({ kind: 'post',     date: p.date, data: { ...p.toObject(), authorName: nameMap.get(p.userId) ?? '', authorAvatarUrl: avMap.get(p.userId) ?? null } })),
+  ].sort((a, b) => b.date - a.date);
+
+  res.json({ status: 'ok', count: feed.length, data: feed });
 });
 
 // GET /clubs/:id

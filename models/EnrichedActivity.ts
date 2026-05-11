@@ -9,8 +9,8 @@ export interface IEnrichedActivity extends Document {
   name:        string;
   description: string;
   photoUrl:    string | null;
+  clubIds:     string[]; // clubs this activity is shared to
   photoPublicId: string | null;
-  mediaType:   'image' | 'video' | null;
   distanceKm:  number;
   durationSec: number;
   paceMinKm:   number;
@@ -30,8 +30,8 @@ const EnrichedActivitySchema = new Schema<IEnrichedActivity>(
     name:        { type: String, default: '' },
     description: { type: String, default: '' },
     photoUrl:    { type: String, default: null },
+    clubIds:     [{ type: String }],
     photoPublicId: { type: String, default: null },
-    mediaType:   { type: String, enum: ['image', 'video'], default: null },
     distanceKm:  { type: Number, default: 0 },
     durationSec: { type: Number, default: 0 },
     paceMinKm:   { type: Number, default: 0 },
