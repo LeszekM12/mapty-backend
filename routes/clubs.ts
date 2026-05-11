@@ -110,6 +110,31 @@ clubsRouter.post('/:id/join', async (req: Request, res: Response) => {
   res.json({ status: 'ok', data: club });
 });
 
+// Club invite codes (in-memory, 7 days TTL)
+const clubInvites = new Map<string, { clubId: string; created: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, inv] of clubInvites.entries()) {
+    if (now - inv.created > 7 * 24 * 60 * 60 * 1000) clubInvites.delete(code);
+  }
+}, 60 * 60 * 1000);
+
+// POST /clubs/:id/invite — generate invite code
+clubsRouter.post('/:id/invite', async (req: Request, res: Response) => {
+  const club = await Club.findOne({ clubId: req.params.id });
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  const code = Math.random().toString(36).slice(2, 10).toUpperCase();
+  clubInvites.set(code, { clubId: req.params.id, created: Date.now() });
+  res.json({ status: 'ok', code });
+});
+
+// GET /clubs/invite/:code — get clubId from invite code
+clubsRouter.get('/invite/:code', (req: Request, res: Response) => {
+  const inv = clubInvites.get(req.params.code.toUpperCase());
+  if (!inv) return void res.status(404).json({ status: 'error', message: 'Invite not found or expired' });
+  res.json({ status: 'ok', clubId: inv.clubId });
+});
+
 // POST /clubs/:id/leave — opuść klub
 clubsRouter.post('/:id/leave', async (req: Request, res: Response) => {
   const { userId } = req.body as { userId: string };
