@@ -97,6 +97,80 @@ clubsRouter.delete('/:id', async (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Deleted' });
 });
 
+// POST /clubs/:id/request — wyślij żądanie dołączenia (private clubs)
+clubsRouter.post('/:id/request', async (req: Request, res: Response) => {
+  const { userId } = req.body as { userId: string };
+  if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
+  const club = await Club.findOneAndUpdate(
+    { clubId: req.params.id },
+    { $addToSet: { pendingMembers: userId } },
+    { new: true },
+  );
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  res.json({ status: 'ok', message: 'Request sent' });
+});
+
+// POST /clubs/:id/approve/:userId — zatwierdź żądanie (owner only)
+clubsRouter.post('/:id/approve/:userId', async (req: Request, res: Response) => {
+  const { ownerId } = req.body as { ownerId: string };
+  const club = await Club.findOne({ clubId: req.params.id });
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  if (club.ownerId !== ownerId) return void res.status(403).json({ status: 'error', message: 'Not owner' });
+  await Club.findOneAndUpdate(
+    { clubId: req.params.id },
+    {
+      $pull:      { pendingMembers: req.params.userId },
+      $addToSet:  { members: req.params.userId },
+    },
+  );
+  res.json({ status: 'ok', message: 'Approved' });
+});
+
+// POST /clubs/:id/reject/:userId — odrzuć żądanie (owner only)
+clubsRouter.post('/:id/reject/:userId', async (req: Request, res: Response) => {
+  const { ownerId } = req.body as { ownerId: string };
+  const club = await Club.findOne({ clubId: req.params.id });
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  if (club.ownerId !== ownerId) return void res.status(403).json({ status: 'error', message: 'Not owner' });
+  await Club.findOneAndUpdate(
+    { clubId: req.params.id },
+    { $pull: { pendingMembers: req.params.userId } },
+  );
+  res.json({ status: 'ok', message: 'Rejected' });
+});
+
+// GET /clubs/:id/members — pobierz memberów z avatarami
+clubsRouter.get('/:id/members', async (req: Request, res: Response) => {
+  const club = await Club.findOne({ clubId: req.params.id });
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  const { User } = await import('../models/User.js');
+  const users = await User.find({ userId: { $in: club.members } }).select('userId name avatarB64');
+  res.json({ status: 'ok', ownerId: club.ownerId, pendingMembers: club.pendingMembers ?? [], data: users.map(u => ({ userId: u.userId, name: u.name, avatarB64: u.avatarB64 })) });
+});
+
+// GET /clubs/:id/stats — statystyki klubu (km z aktywności w clubId)
+clubsRouter.get('/:id/stats', async (req: Request, res: Response) => {
+  const club = await Club.findOne({ clubId: req.params.id });
+  if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  const { EnrichedActivity } = await import('../models/EnrichedActivity.js');
+  const activities = await EnrichedActivity.find({ clubIds: req.params.id });
+  const statsByUser: Record<string, { name: string; avatarB64: string | null; km: number; count: number }> = {};
+  const { User } = await import('../models/User.js');
+  const users = await User.find({ userId: { $in: club.members } }).select('userId name avatarB64');
+  const nameMap  = new Map(users.map(u => [u.userId, u.name]));
+  const avMap    = new Map(users.map(u => [u.userId, u.avatarB64]));
+  for (const a of activities) {
+    if (!statsByUser[a.userId]) statsByUser[a.userId] = { name: nameMap.get(a.userId) ?? 'Unknown', avatarB64: avMap.get(a.userId) ?? null, km: 0, count: 0 };
+    statsByUser[a.userId].km    += a.distanceKm ?? 0;
+    statsByUser[a.userId].count += 1;
+  }
+  const ranking = Object.entries(statsByUser)
+    .map(([userId, s]) => ({ userId, ...s, km: Math.round(s.km * 100) / 100 }))
+    .sort((a, b) => b.km - a.km);
+  const totalKm = ranking.reduce((s, r) => s + r.km, 0);
+  res.json({ status: 'ok', totalKm: Math.round(totalKm * 100) / 100, activities: activities.length, ranking });
+});
+
 // POST /clubs/:id/join — dołącz do klubu
 clubsRouter.post('/:id/join', async (req: Request, res: Response) => {
   const { userId } = req.body as { userId: string };

@@ -8,9 +8,11 @@ export interface IClub extends Document {
   description: string;
   sport:       string;
   avatarB64:   string | null;
-  city:        string;    // required
+  city:        string;
+  isPrivate:   boolean;   // private clubs only visible to members
   region:      string;    // auto-filled from city — used for location search
-  members:     string[];  // userId[]
+  members:      string[];  // userId[]
+  pendingMembers: string[]; // pending join requests
   posts:       string[];  // postId[]
   createdAt:   Date;
   updatedAt:   Date;
@@ -25,8 +27,10 @@ const ClubSchema = new Schema<IClub>(
     sport:       { type: String, default: 'running' },
     avatarB64:   { type: String, default: null },
     city:        { type: String, default: '' },
+    isPrivate:   { type: Boolean, default: false },
     region:      { type: String, default: '' },
-    members:     [{ type: String }],
+    members:        [{ type: String }],
+    pendingMembers: [{ type: String }],
     posts:       [{ type: String }],
   },
   {
