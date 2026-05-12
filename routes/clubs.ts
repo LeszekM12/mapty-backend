@@ -120,6 +120,17 @@ clubsRouter.delete('/:id', async (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Deleted' });
 });
 
+// POST /clubs/:id/cancel-request — anuluj żądanie dołączenia
+clubsRouter.post('/:id/cancel-request', async (req: Request, res: Response) => {
+  const { userId } = req.body as { userId: string };
+  if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
+  await Club.findOneAndUpdate(
+    { clubId: req.params.id },
+    { $pull: { pendingMembers: userId } },
+  );
+  res.json({ status: 'ok', message: 'Request cancelled' });
+});
+
 // POST /clubs/:id/request — wyślij żądanie dołączenia (private clubs)
 clubsRouter.post('/:id/request', async (req: Request, res: Response) => {
   const { userId } = req.body as { userId: string };
