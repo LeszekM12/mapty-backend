@@ -4,6 +4,24 @@ import { Club } from '../models/Club.js';
 
 export const clubsRouter = Router();
 
+// Helper — dodaj event do feeda klubu
+async function addClubEvent(clubId: string, userId: string, eventType: 'joined'|'approved'|'left'): Promise<void> {
+  try {
+    const { Post } = await import('../models/Post.js');
+    const { User } = await import('../models/User.js');
+    const user = await User.findOne({ userId }).select('name avatarB64');
+    const labels = { joined: '👋 joined', approved: '🎉 was accepted', left: '👋 left' };
+    await Post.create({
+      postId:     `evt_${clubId}_${userId}_${Date.now()}`,
+      userId,     type: 'club_event',
+      title:      `${user?.name ?? 'Someone'} ${labels[eventType]} the club`,
+      body:       '', date: Date.now(),
+      authorName: user?.name ?? '', avatarB64: user?.avatarB64 ?? null,
+      clubIds: [clubId], clubOnly: true,
+    });
+  } catch { /* non-critical */ }
+}
+
 // GET /clubs?q=name&city=xxx&sport=running — szukaj klubów
 clubsRouter.get('/', async (req: Request, res: Response) => {
   const { q, city, region, sport } = req.query as { q?: string; city?: string; region?: string; sport?: string };
@@ -157,6 +175,7 @@ clubsRouter.post('/:id/approve/:userId', async (req: Request, res: Response) => 
       $addToSet:  { members: req.params.userId },
     },
   );
+  void addClubEvent(req.params.id, req.params.userId, 'approved');
   res.json({ status: 'ok', message: 'Approved' });
 });
 
@@ -246,5 +265,6 @@ clubsRouter.post('/:id/leave', async (req: Request, res: Response) => {
     { new: true },
   );
   if (!club) return void res.status(404).json({ status: 'error', message: 'Club not found' });
+  void addClubEvent(req.params.id, userId, 'left');
   res.json({ status: 'ok', data: club });
 });
