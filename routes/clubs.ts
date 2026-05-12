@@ -52,6 +52,13 @@ clubsRouter.get('/:id/feed', async (req: Request, res: Response) => {
   res.json({ status: 'ok', count: feed.length, data: feed });
 });
 
+// GET /clubs/invite/:code — get clubId from invite code
+clubsRouter.get('/invite/:code', (req: Request, res: Response) => {
+  const inv = clubInvites.get(req.params.code.toUpperCase());
+  if (!inv) return void res.status(404).json({ status: 'error', message: 'Invite not found or expired' });
+  res.json({ status: 'ok', clubId: inv.clubId });
+});
+
 // GET /clubs/:id
 clubsRouter.get('/:id', async (req: Request, res: Response) => {
   const club = await Club.findOne({ clubId: req.params.id });
@@ -200,13 +207,6 @@ clubsRouter.post('/:id/invite', async (req: Request, res: Response) => {
   const code = Math.random().toString(36).slice(2, 10).toUpperCase();
   clubInvites.set(code, { clubId: req.params.id, created: Date.now() });
   res.json({ status: 'ok', code });
-});
-
-// GET /clubs/invite/:code — get clubId from invite code
-clubsRouter.get('/invite/:code', (req: Request, res: Response) => {
-  const inv = clubInvites.get(req.params.code.toUpperCase());
-  if (!inv) return void res.status(404).json({ status: 'error', message: 'Invite not found or expired' });
-  res.json({ status: 'ok', clubId: inv.clubId });
 });
 
 // POST /clubs/:id/leave — opuść klub
