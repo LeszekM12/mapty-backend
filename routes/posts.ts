@@ -44,9 +44,21 @@ postsRouter.post('/', async (req: Request, res: Response) => {
   res.status(201).json({ status: 'ok', data: post });
 });
 
-// DELETE /posts/:id?userId=xxx
+// DELETE /posts/:id?userId=xxx&ownerId=xxx
 postsRouter.delete('/:id', async (req: Request, res: Response) => {
-  const r = await Post.deleteOne({ postId: req.params.id, userId: req.query.userId });
+  const { userId, ownerId } = req.query as { userId?: string; ownerId?: string };
+  // Allow delete if: author OR club owner
+  let r = await Post.deleteOne({ postId: req.params.id, userId });
+  if (!r.deletedCount && ownerId) {
+    // Owner can delete any post in their club
+    const post = await Post.findOne({ postId: req.params.id });
+    if (post) {
+      const { Club } = await import('../models/Club.js');
+      const clubIds = (post.clubIds as string[] | undefined) ?? [];
+      const ownerClub = await Club.findOne({ clubId: { $in: clubIds }, ownerId });
+      if (ownerClub) r = await Post.deleteOne({ postId: req.params.id });
+    }
+  }
   if (!r.deletedCount) return void res.status(404).json({ status: 'error', message: 'Not found' });
   res.json({ status: 'ok', message: 'Deleted' });
 });
