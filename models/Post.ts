@@ -11,6 +11,7 @@ export interface IPost extends Document {
   photoUrl:   string | null;
   photoPublicId: string | null;
   clubIds?:      string[];
+  clubOnly?:     boolean;
   authorName: string;
   avatarB64:  string | null;
   syncedAt:   Date;
@@ -27,6 +28,7 @@ const PostSchema = new Schema<IPost>(
     photoUrl:   { type: String, default: null },
     photoPublicId: { type: String, default: null },
     clubIds:      [{ type: String }],
+    clubOnly:     { type: Boolean, default: false },
     authorName: { type: String, default: '' },
     avatarB64:  { type: String, default: null },
     syncedAt:   { type: Date, default: Date.now },

@@ -39,7 +39,7 @@ feedRouter.get('/', async (req: Request, res: Response) => {
   // Pobierz aktywności i posty starsze niż beforeDate
   const [activities, posts] = await Promise.all([
     EnrichedActivity.find({ userId: { $in: allIds }, date: { $lt: beforeDate } }).sort({ date: -1 }).limit(PAGE_SIZE + 1),
-    Post.find({ userId: { $in: allIds }, date: { $lt: beforeDate } }).sort({ date: -1 }).limit(PAGE_SIZE + 1),
+    Post.find({ userId: { $in: allIds }, date: { $lt: beforeDate }, clubOnly: { $ne: true } }).sort({ date: -1 }).limit(PAGE_SIZE + 1),
   ]);
 
   // Pobierz avatary użytkowników
