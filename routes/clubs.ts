@@ -49,7 +49,23 @@ clubsRouter.get('/:id/feed', async (req: Request, res: Response) => {
     ...posts.map(p =>     ({ kind: 'post',     date: p.date, data: { ...p.toObject(), authorName: nameMap.get(p.userId) ?? '', authorAvatarUrl: avMap.get(p.userId) ?? null } })),
   ].sort((a, b) => b.date - a.date);
 
-  res.json({ status: 'ok', count: feed.length, data: feed });
+  // Add pending requests for owner
+  const requesterId = (req.query as Record<string,string>).requesterId;
+  let pendingItems: {kind:string;date:number;data:Record<string,unknown>}[] = [];
+  if (requesterId) {
+    const clubDoc = await Club.findOne({ clubId: req.params.id }).select('ownerId pendingMembers');
+    if (clubDoc && requesterId === clubDoc.ownerId && clubDoc.pendingMembers?.length) {
+      const pendingUsers = await User.find({ userId: { $in: clubDoc.pendingMembers } }).select('userId name avatarB64');
+      const puMap = new Map(pendingUsers.map(u => [u.userId, { name: u.name, avatarB64: u.avatarB64 }]));
+      pendingItems = (clubDoc.pendingMembers as string[]).map(uid => ({
+        kind: 'request',
+        date: Date.now(),
+        data: { userId: uid, authorName: puMap.get(uid)?.name ?? uid, avatarB64: puMap.get(uid)?.avatarB64 ?? null },
+      }));
+    }
+  }
+
+  res.json({ status: 'ok', count: feed.length + pendingItems.length, data: [...pendingItems, ...feed] });
 });
 
 // GET /clubs/invite/:code — get clubId from invite code
