@@ -194,5 +194,30 @@ pushRouter.get('/subscriptions', async (_req: Request, res: Response) => {
   res.json({ status: 'ok', totalCount: all.length, byUser });
 });
 
+// ── Club notifications ───────────────────────────────────────────────────────
+
+export async function notifyClubMembers(
+  clubId:   string,
+  authorId: string,
+  title:    string,
+  body:     string,
+): Promise<void> {
+  try {
+    const { Club } = await import('../models/Club.js');
+    const club = await Club.findOne({ clubId }).select('members');
+    if (!club) return;
+    const recipients = (club.members as string[]).filter(uid => uid !== authorId);
+    for (const uid of recipients) {
+      const subs = await PushSubscription.find({ userId: uid });
+      if (subs.length) void sendToSubscriptions(subs, {
+        title, body,
+        icon:  '/public/icon-192.png',
+        badge: '/public/icon-192.png',
+        url:   `/#club_open=${clubId}`,
+      });
+    }
+  } catch { /* non-critical */ }
+}
+
 // Eksportuj sendToSubscriptions do użycia w liveTracking
 export { sendToSubscriptions };

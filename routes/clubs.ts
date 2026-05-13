@@ -1,6 +1,7 @@
 // ─── CLUBS ROUTER ────────────────────────────────────────────────────────────
 import { Router, Request, Response } from 'express';
 import { Club } from '../models/Club.js';
+import { notifyClubMembers } from './pushService.js';
 
 export const clubsRouter = Router();
 
@@ -44,6 +45,16 @@ clubsRouter.get('/', async (req: Request, res: Response) => {
   if (sport) filter['sport'] = sport;
   const clubs = await Club.find(filter).sort({ createdAt: -1 }).limit(50);
   res.json({ status: 'ok', count: clubs.length, data: clubs });
+});
+
+// POST /clubs/:id/notify-post
+clubsRouter.post('/:id/notify-post', async (req: Request, res: Response) => {
+  const { userId, authorName, postTitle } = req.body as { userId:string; authorName:string; postTitle:string };
+  if (!userId) return void res.status(400).json({ status:'error', message:'userId required' });
+  const club = await Club.findOne({ clubId: req.params.id }).select('name');
+  if (!club) return void res.status(404).json({ status:'error', message:'Club not found' });
+  void notifyClubMembers(req.params.id, userId, `${club.name} — new post`, `${authorName}: ${postTitle || 'New post'}`);
+  res.json({ status: 'ok' });
 });
 
 // GET /clubs/:id/feed — activities and posts shared to this club
