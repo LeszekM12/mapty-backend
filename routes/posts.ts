@@ -37,12 +37,16 @@ postsRouter.post('/', async (req: Request, res: Response) => {
   // Usuń avatarB64 — avatar jest już w users, nie duplikuj w każdym poście
   const { avatarB64: _avatar, ...lean } = body as Record<string, unknown> & { avatarB64?: unknown };
   void _avatar;
+  const isNew = !(await Post.exists({
+    postId: lean.postId as string, userId: lean.userId as string,
+  }));
+
   const post = await Post.findOneAndUpdate(
     { postId: lean.postId as string, userId: lean.userId as string },
     { ...lean, avatarB64: null, syncedAt: new Date() },
     { upsert: true, new: true },
   );
-  if (lean.type !== 'club_event' && !lean.clubOnly) {
+  if (isNew && lean.type !== 'club_event' && !lean.clubOnly) {
     void (async () => {
       const author = await User.findOne({ userId: lean.userId as string }).select('name');
       void notifyNewPost(lean.userId as string, author?.name ?? 'Ktoś', lean.title as string ?? '', !!(lean.photoUrl));

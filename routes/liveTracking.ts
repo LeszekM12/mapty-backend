@@ -98,6 +98,7 @@ liveRouter.post('/start', async (req: Request, res: Response) => {
       token,
       userName,
       userId:    myUserId ?? null,
+      sport:     (req.body as Record<string,unknown>).sport as string ?? 'running',
       status:    'running',
       startedAt: Date.now(),
       updatedAt: Date.now(),
@@ -226,9 +227,24 @@ liveRouter.post('/finish', async (req: Request, res: Response) => {
   );
   if (!s) return void res.status(404).json({ status: 'error', message: 'Not found' });
 
-  // Push do samego siebie po zakończeniu treningu
-  if (s.userId && sport && distanceKm) {
-    void notifyActivityFinished(s.userId, sport, distanceKm, durationSec ?? 0);
+  // Push do samego siebie — użyj danych z body lub oblicz z historii sesji
+  if (s.userId) {
+    let km  = distanceKm ?? 0;
+    let sec = durationSec ?? 0;
+    if (!km && s.history && (s.history as {lat:number;lng:number;timestamp:number}[]).length > 1) {
+      // Oblicz dystans z historii GPS
+      const hist = s.history as {lat:number;lng:number;timestamp:number}[];
+      const toRad = (d: number) => d * Math.PI / 180;
+      for (let i = 1; i < hist.length; i++) {
+        const R = 6371;
+        const dLat = toRad(hist[i].lat - hist[i-1].lat);
+        const dLon = toRad(hist[i].lng - hist[i-1].lng);
+        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(hist[i-1].lat)) * Math.cos(toRad(hist[i].lat)) * Math.sin(dLon/2)**2;
+        km += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      }
+      sec = Math.round((hist[hist.length-1].timestamp - hist[0].timestamp) / 1000);
+    }
+    if (km > 0.1) void notifyActivityFinished(s.userId, sport ?? (s as unknown as Record<string,unknown>).sport as string ?? 'running', km, sec);
   }
 
   res.json({ status: 'ok' });

@@ -26,23 +26,31 @@ enrichedActivitiesRouter.post('/', async (req: Request, res: Response) => {
   // Usuń coords — są już w activities, nie duplikuj w enrichedActivities
   const { coords: _coords, ...lean } = body as Record<string, unknown> & { coords?: unknown };
   void _coords;
+  // Sprawdź czy to nowa aktywność zanim upsert
+  const isNew = !(await EnrichedActivity.exists({
+    activityId: lean.activityId as string, userId: lean.userId as string,
+  }));
+
   const item = await EnrichedActivity.findOneAndUpdate(
     { activityId: lean.activityId as string, userId: lean.userId as string },
     { ...lean, coords: [], syncedAt: new Date() },
     { upsert: true, new: true },
   );
-  // Push do followers + friends
-  void (async () => {
-    const { User } = await import('../models/User.js');
-    const author = await User.findOne({ userId: lean.userId as string }).select('name');
-    void notifyNewActivity(
-      lean.userId as string,
-      author?.name ?? 'Ktoś',
-      lean.sport as string,
-      (lean.distanceKm as number) ?? 0,
-      lean.name as string ?? '',
-    );
-  })();
+
+  // Push tylko dla nowych aktywności z dystansem
+  if (isNew && (lean.distanceKm as number) > 0) {
+    void (async () => {
+      const { User } = await import('../models/User.js');
+      const author = await User.findOne({ userId: lean.userId as string }).select('name');
+      void notifyNewActivity(
+        lean.userId as string,
+        author?.name ?? 'Ktoś',
+        lean.sport as string,
+        (lean.distanceKm as number) ?? 0,
+        lean.name as string ?? '',
+      );
+    })();
+  }
 
   res.status(201).json({ status: 'ok', data: item });
 });
