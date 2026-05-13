@@ -2,6 +2,7 @@
 import { Router, Request, Response } from 'express';
 import { Post } from '../models/Post.js';
 import { User } from '../models/User.js';
+import { notifyNewPost } from './pushService.js';
 
 export const postsRouter = Router();
 
@@ -41,6 +42,12 @@ postsRouter.post('/', async (req: Request, res: Response) => {
     { ...lean, avatarB64: null, syncedAt: new Date() },
     { upsert: true, new: true },
   );
+  if (lean.type !== 'club_event' && !lean.clubOnly) {
+    void (async () => {
+      const author = await User.findOne({ userId: lean.userId as string }).select('name');
+      void notifyNewPost(lean.userId as string, author?.name ?? 'Ktoś', lean.title as string ?? '', !!(lean.photoUrl));
+    })();
+  }
   res.status(201).json({ status: 'ok', data: post });
 });
 

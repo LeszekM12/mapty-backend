@@ -11,6 +11,7 @@ import { EnrichedActivity } from '../models/EnrichedActivity.js';
 import { Post }             from '../models/Post.js';
 import { User }             from '../models/User.js';
 import { Like, Comment }    from '../models/LikeComment.js';
+import { notifyLike }       from './pushService.js';
 
 export const feedRouter = Router();
 
@@ -165,6 +166,22 @@ feedRouter.post('/like', async (req: Request, res: Response) => {
 
   await Like.create({ itemId, itemType, userId });
   const count = await Like.countDocuments({ itemId });
+
+  // Push do właściciela — znajdź ownerId po itemId
+  void (async () => {
+    const liker = await User.findOne({ userId }).select('name');
+    let ownerId: string | null = null;
+    if (itemType === 'activity') {
+      const a = await EnrichedActivity.findOne({ activityId: itemId }).select('userId');
+      ownerId = a?.userId ?? null;
+    } else {
+      const { Post } = await import('../models/Post.js');
+      const p = await Post.findOne({ postId: itemId }).select('userId');
+      ownerId = p?.userId ?? null;
+    }
+    if (ownerId) void notifyLike(userId, liker?.name ?? 'Ktoś', ownerId, itemType);
+  })();
+
   res.json({ status: 'ok', liked: true, count });
 });
 

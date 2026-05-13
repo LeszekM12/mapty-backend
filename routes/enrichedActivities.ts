@@ -1,6 +1,7 @@
 // ─── ENRICHED ACTIVITIES ROUTER (Home feed) ──────────────────────────────────
 import { Router, Request, Response } from 'express';
 import { EnrichedActivity } from '../models/EnrichedActivity.js';
+import { notifyNewActivity } from './pushService.js';
 
 export const enrichedActivitiesRouter = Router();
 
@@ -30,6 +31,19 @@ enrichedActivitiesRouter.post('/', async (req: Request, res: Response) => {
     { ...lean, coords: [], syncedAt: new Date() },
     { upsert: true, new: true },
   );
+  // Push do followers + friends
+  void (async () => {
+    const { User } = await import('../models/User.js');
+    const author = await User.findOne({ userId: lean.userId as string }).select('name');
+    void notifyNewActivity(
+      lean.userId as string,
+      author?.name ?? 'Ktoś',
+      lean.sport as string,
+      (lean.distanceKm as number) ?? 0,
+      lean.name as string ?? '',
+    );
+  })();
+
   res.status(201).json({ status: 'ok', data: item });
 });
 

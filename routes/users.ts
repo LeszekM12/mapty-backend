@@ -2,6 +2,7 @@
 import { Router, Request, Response } from 'express';
 import { User } from '../models/User.js';
 import { PushSubscription } from '../models/PushSubscription.js';
+import { notifyFollow } from './pushService.js';
 
 export const usersRouter = Router();
 
@@ -48,17 +49,13 @@ usersRouter.post('/:userId/follow/:targetId', async (req: Request, res: Response
   if (userId === targetId) return void res.status(400).json({ status: 'error', message: 'Cannot follow yourself' });
 
   await Promise.all([
-    // Dodaj userId do followers targetu
-    User.findOneAndUpdate(
-      { userId: targetId },
-      { $addToSet: { followers: userId } },
-    ),
-    // Dodaj targetId do following usera
-    User.findOneAndUpdate(
-      { userId },
-      { $addToSet: { following: targetId } },
-    ),
+    User.findOneAndUpdate({ userId: targetId }, { $addToSet: { followers: userId } }),
+    User.findOneAndUpdate({ userId },           { $addToSet: { following: targetId } }),
   ]);
+
+  // Push do obserwowanego
+  const follower = await User.findOne({ userId }).select('name');
+  void notifyFollow(userId, follower?.name ?? 'Ktoś', targetId);
 
   res.json({ status: 'ok', following: true });
 });

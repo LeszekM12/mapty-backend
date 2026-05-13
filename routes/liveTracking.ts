@@ -12,7 +12,7 @@
 
 import { Router, Request, Response } from 'express';
 import { LiveSession } from '../models/LiveSession.js';
-import { sendToSubscriptions } from './pushService.js';
+import { sendToSubscriptions, notifyActivityFinished } from './pushService.js';
 
 export const liveRouter = Router();
 
@@ -217,11 +217,20 @@ liveRouter.post('/resume', async (req: Request, res: Response) => {
 // ── POST /live/finish ─────────────────────────────────────────────────────────
 
 liveRouter.post('/finish', async (req: Request, res: Response) => {
+  const { token, sport, distanceKm, durationSec } = req.body as {
+    token: string; sport?: string; distanceKm?: number; durationSec?: number;
+  };
   const s = await LiveSession.findOneAndUpdate(
-    { token: req.body.token },
+    { token },
     { $set: { status: 'finished', updatedAt: Date.now() } },
   );
   if (!s) return void res.status(404).json({ status: 'error', message: 'Not found' });
+
+  // Push do samego siebie po zakończeniu treningu
+  if (s.userId && sport && distanceKm) {
+    void notifyActivityFinished(s.userId, sport, distanceKm, durationSec ?? 0);
+  }
+
   res.json({ status: 'ok' });
 });
 

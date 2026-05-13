@@ -194,6 +194,24 @@ pushRouter.get('/subscriptions', async (_req: Request, res: Response) => {
   res.json({ status: 'ok', totalCount: all.length, byUser });
 });
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function pushToUser(userId: string, payload: PushPayload): Promise<void> {
+  const subs = await PushSubscription.find({ userId });
+  if (subs.length) void sendToSubscriptions(subs, payload);
+}
+
+async function pushToUsers(userIds: string[], payload: PushPayload): Promise<void> {
+  for (const uid of [...new Set(userIds)]) await pushToUser(uid, payload);
+}
+
+async function getFollowersAndFriends(userId: string): Promise<string[]> {
+  const { User } = await import('../models/User.js');
+  const u = await User.findOne({ userId }).select('followers friends');
+  if (!u) return [];
+  return [...new Set([...(u.followers ?? []), ...(u.friends ?? [])])];
+}
+
 // ── Club notifications ───────────────────────────────────────────────────────
 
 export async function notifyClubMembers(
@@ -216,6 +234,99 @@ export async function notifyClubMembers(
         url:   `/#club_open=${clubId}`,
       });
     }
+  } catch { /* non-critical */ }
+}
+
+// ── Social notifications ─────────────────────────────────────────────────────
+
+/** Gdy użytkownik dodaje aktywność — push do followers + friends */
+export async function notifyNewActivity(
+  authorId: string, authorName: string,
+  sport: string, distanceKm: number, activityName: string,
+): Promise<void> {
+  try {
+    const recipients = await getFollowersAndFriends(authorId);
+    if (!recipients.length) return;
+    const icons: Record<string,string> = { running:'🏃', cycling:'🚴', walking:'🚶' };
+    const icon = icons[sport] ?? '🏅';
+    await pushToUsers(recipients, {
+      title: `${icon} ${authorName}`,
+      body:  activityName
+        ? `${activityName} · ${distanceKm.toFixed(1)} km`
+        : `${sport} · ${distanceKm.toFixed(1)} km`,
+      icon:  '/public/icon-192.png',
+      url:   '/',
+    });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy użytkownik dodaje post — push do followers + friends */
+export async function notifyNewPost(
+  authorId: string, authorName: string,
+  title: string, hasPhoto: boolean,
+): Promise<void> {
+  try {
+    const recipients = await getFollowersAndFriends(authorId);
+    if (!recipients.length) return;
+    await pushToUsers(recipients, {
+      title: `📸 ${authorName}`,
+      body:  hasPhoto ? (title || 'Dodał nowe zdjęcie') : (title || 'Dodał nowy post'),
+      icon:  '/public/icon-192.png',
+      url:   '/',
+    });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy ktoś daje lajka — push do właściciela itemu */
+export async function notifyLike(
+  likerId: string, likerName: string,
+  ownerId: string, itemType: 'activity' | 'post',
+): Promise<void> {
+  if (likerId === ownerId) return;
+  try {
+    const label = itemType === 'activity' ? 'aktywność' : 'post';
+    await pushToUser(ownerId, {
+      title: `❤️ ${likerName}`,
+      body:  `Polubił Twoją ${label}`,
+      icon:  '/public/icon-192.png',
+      url:   '/',
+    });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy ktoś zaczyna obserwować — push do obserwowanego */
+export async function notifyFollow(
+  followerId: string, followerName: string,
+  targetId: string,
+): Promise<void> {
+  if (followerId === targetId) return;
+  try {
+    await pushToUser(targetId, {
+      title: `👋 ${followerName}`,
+      body:  'Zaczął Cię obserwować',
+      icon:  '/public/icon-192.png',
+      url:   '/',
+    });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy tracking się kończy — push do samego siebie */
+export async function notifyActivityFinished(
+  userId: string, sport: string, distanceKm: number, durationSec: number,
+): Promise<void> {
+  try {
+    const icons: Record<string,string> = { running:'🏃', cycling:'🚴', walking:'🚶' };
+    const icon = icons[sport] ?? '🏅';
+    const min  = Math.floor(durationSec / 60);
+    const h    = Math.floor(min / 60);
+    const m    = min % 60;
+    const time = h > 0 ? `${h}h ${m}min` : `${m}min`;
+    await pushToUser(userId, {
+      title: `${icon} Trening zapisany!`,
+      body:  `${distanceKm.toFixed(2)} km · ${time} — świetna robota!`,
+      icon:  '/public/icon-192.png',
+      url:   '/',
+    });
   } catch { /* non-critical */ }
 }
 
