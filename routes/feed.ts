@@ -11,7 +11,7 @@ import { EnrichedActivity } from '../models/EnrichedActivity.js';
 import { Post }             from '../models/Post.js';
 import { User }             from '../models/User.js';
 import { Like, Comment }    from '../models/LikeComment.js';
-import { notifyLike }       from './pushService.js';
+import { notifyLike, notifyComment } from './pushService.js';
 
 export const feedRouter = Router();
 
@@ -216,6 +216,20 @@ feedRouter.post('/comment', async (req: Request, res: Response) => {
     authorName: authorName ?? '',
     text:       text.slice(0, 500),
   });
+
+  // Push + notif do właściciela komentowanego itemu
+  void (async () => {
+    let ownerId: string | null = null;
+    if (itemType === 'activity') {
+      const a = await EnrichedActivity.findOne({ activityId: itemId }).select('userId');
+      ownerId = a?.userId ?? null;
+    } else {
+      const { Post } = await import('../models/Post.js');
+      const p = await Post.findOne({ postId: itemId }).select('userId');
+      ownerId = p?.userId ?? null;
+    }
+    if (ownerId) void notifyComment(userId, authorName, ownerId, itemType ?? 'activity', text);
+  })();
 
   res.status(201).json({ status: 'ok', data: comment });
 });

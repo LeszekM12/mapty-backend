@@ -248,6 +248,30 @@ export async function notifyClubMembers(
   } catch { /* non-critical */ }
 }
 
+// ── Save to Notification collection ─────────────────────────────────────────
+
+export async function saveNotification(
+  userId:  string,
+  type:    string,
+  title:   string,
+  body:    string,
+  icon:    string,
+): Promise<void> {
+  try {
+    const { Notification } = await import('../models/Notification.js');
+    await Notification.create({
+      notifId:   `${type}_${userId}_${Date.now()}`,
+      userId,
+      type,
+      title,
+      body,
+      icon,
+      read:      false,
+      timestamp: Date.now(),
+    });
+  } catch { /* non-critical */ }
+}
+
 // ── Social notifications ─────────────────────────────────────────────────────
 
 /** Gdy użytkownik dodaje aktywność — push do followers + friends */
@@ -260,14 +284,12 @@ export async function notifyNewActivity(
     if (!recipients.length) return;
     const icons: Record<string,string> = { running:'🏃', cycling:'🚴', walking:'🚶' };
     const icon = icons[sport] ?? '🏅';
-    await pushToUsers(recipients, {
-      title: `${icon} ${authorName}`,
-      body:  activityName
-        ? `${activityName} · ${distanceKm.toFixed(1)} km`
-        : `${sport} · ${distanceKm.toFixed(1)} km`,
-      icon:  '/public/icon-192.png',
-      url:   '/',
-    });
+    const title = `${icon} ${authorName}`;
+    const body  = activityName
+      ? `${activityName} · ${distanceKm.toFixed(1)} km`
+      : `${sport} · ${distanceKm.toFixed(1)} km`;
+    await pushToUsers(recipients, { title, body, icon: '/public/icon-192.png', url: '/' });
+    await Promise.all(recipients.map(uid => saveNotification(uid, 'friend_activity', title, body, icon)));
   } catch { /* non-critical */ }
 }
 
@@ -279,12 +301,10 @@ export async function notifyNewPost(
   try {
     const recipients = await getFollowersAndFriends(authorId);
     if (!recipients.length) return;
-    await pushToUsers(recipients, {
-      title: `📸 ${authorName}`,
-      body:  hasPhoto ? (title || 'Dodał nowe zdjęcie') : (title || 'Dodał nowy post'),
-      icon:  '/public/icon-192.png',
-      url:   '/',
-    });
+    const ptitle = `📸 ${authorName}`;
+    const pbody  = hasPhoto ? (title || 'Dodał nowe zdjęcie') : (title || 'Dodał nowy post');
+    await pushToUsers(recipients, { title: ptitle, body: pbody, icon: '/public/icon-192.png', url: '/' });
+    await Promise.all(recipients.map(uid => saveNotification(uid, 'friend_post', ptitle, pbody, '📸')));
   } catch { /* non-critical */ }
 }
 
@@ -296,12 +316,12 @@ export async function notifyLike(
   if (likerId === ownerId) return;
   try {
     const label = itemType === 'activity' ? 'aktywność' : 'post';
-    await pushToUser(ownerId, {
-      title: `❤️ ${likerName}`,
-      body:  `Polubił Twoją ${label}`,
-      icon:  '/public/icon-192.png',
-      url:   '/',
-    });
+    const title = `❤️ ${likerName}`;
+    const body  = `Polubił Twoją ${label}`;
+    await Promise.all([
+      pushToUser(ownerId, { title, body, icon: '/public/icon-192.png', url: '/' }),
+      saveNotification(ownerId, 'like', title, body, '❤️'),
+    ]);
   } catch { /* non-critical */ }
 }
 
@@ -312,12 +332,12 @@ export async function notifyFollow(
 ): Promise<void> {
   if (followerId === targetId) return;
   try {
-    await pushToUser(targetId, {
-      title: `👋 ${followerName}`,
-      body:  'Zaczął Cię obserwować',
-      icon:  '/public/icon-192.png',
-      url:   '/',
-    });
+    const title = `👋 ${followerName}`;
+    const body  = 'Zaczął Cię obserwować';
+    await Promise.all([
+      pushToUser(targetId, { title, body, icon: '/public/icon-192.png', url: '/' }),
+      saveNotification(targetId, 'follow', title, body, '👋'),
+    ]);
   } catch { /* non-critical */ }
 }
 
@@ -338,6 +358,23 @@ export async function notifyActivityFinished(
       icon:  '/public/icon-192.png',
       url:   '/',
     });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy ktoś komentuje — push + notif do właściciela */
+export async function notifyComment(
+  commenterId: string, commenterName: string,
+  ownerId: string, itemType: 'activity' | 'post', text: string,
+): Promise<void> {
+  if (commenterId === ownerId) return;
+  try {
+    const label = itemType === 'activity' ? 'aktywność' : 'post';
+    const title = `💬 ${commenterName}`;
+    const body  = `Skomentował Twoją ${label}: "${text.slice(0, 50)}"`;
+    await Promise.all([
+      pushToUser(ownerId, { title, body, icon: '/public/icon-192.png', url: '/' }),
+      saveNotification(ownerId, 'comment', title, body, '💬'),
+    ]);
   } catch { /* non-critical */ }
 }
 

@@ -53,6 +53,14 @@ notificationsRouter.delete('/:id', async (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'Deleted' });
 });
 
+// DELETE /notifications/all?userId=xxx — wyczyść wszystkie
+notificationsRouter.delete('/all', async (req: Request, res: Response) => {
+  const { userId } = req.query;
+  if (!userId) return void res.status(400).json({ status: 'error', message: 'userId required' });
+  await Notification.deleteMany({ userId });
+  res.json({ status: 'ok', message: 'All cleared' });
+});
+
 // POST /notifications/bulk
 notificationsRouter.post('/bulk', async (req: Request, res: Response) => {
   const { userId, items } = req.body as { userId: string; items: Record<string, unknown>[] };
