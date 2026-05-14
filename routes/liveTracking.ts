@@ -91,6 +91,14 @@ liveRouter.post('/start', async (req: Request, res: Response) => {
   // All endpoints for polling lookup
   const allEndpoints = (friendSubs ?? []).map(s => s.endpoint);
 
+  // Zakończ poprzednie aktywne sesje tego użytkownika
+  if (myUserId) {
+    await LiveSession.updateMany(
+      { userId: myUserId, status: { $ne: 'finished' } },
+      { $set: { status: 'finished', updatedAt: Date.now() } },
+    );
+  }
+
   // Create session in MongoDB
   await LiveSession.findOneAndUpdate(
     { token },
@@ -260,13 +268,14 @@ liveRouter.get('/active/:endpoint', async (req: Request, res: Response) => {
   const key = decodeURIComponent(req.params.endpoint);
 
   // Look up by push endpoint or by userId
+  // Znajdź NAJNOWSZĄ aktywną sesję — sortuj po startedAt desc
   const s = await LiveSession.findOne({
     status: { $ne: 'finished' },
     $or: [
-      { endpoints:     key },
-      { userId:        key },
+      { endpoints: key },
+      { userId:    key },
     ],
-  });
+  }).sort({ startedAt: -1 });
 
   if (!s) return void res.json({ status: 'ok', active: false, token: null });
   res.json({ status: 'ok', active: true, token: s.token, userName: s.userName, session: s.status, userId: s.userId });

@@ -186,6 +186,17 @@ pushRouter.post('/send', async (req: Request, res: Response) => {
   res.json({ status: 'ok', sent, failed });
 });
 
+// GET /push/subscriptions-for/:userId — pobierz subskrypcje dla konkretnego użytkownika
+pushRouter.get('/subscriptions-for/:userId', async (req: Request, res: Response) => {
+  const subs = await PushSubscription.find({ userId: req.params.userId })
+    .select('endpoint expirationTime keys');
+  res.json({ status: 'ok', data: subs.map(s => ({
+    endpoint:       s.endpoint,
+    expirationTime: s.expirationTime,
+    keys:           s.keys,
+  })) });
+});
+
 // GET /push/subscriptions — diagnostyka
 pushRouter.get('/subscriptions', async (_req: Request, res: Response) => {
   const all = await PushSubscription.find();
