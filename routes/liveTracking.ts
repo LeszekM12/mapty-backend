@@ -118,8 +118,10 @@ liveRouter.post('/start', async (req: Request, res: Response) => {
       expirationTime: s.expirationTime,
       keys:           s.keys,
     }));
+    const sportIcons: Record<string,string> = { running:'🏃', cycling:'🚴', walking:'🚶' };
+    const sportIcon = sportIcons[(req.body as Record<string,unknown>).sport as string ?? 'running'] ?? '🏅';
     const { sent, failed } = await sendToSubscriptions(subDocs, {
-      title: `🏃 ${userName} started a workout!`,
+      title: `${sportIcon} ${userName} started a workout!`,
       body:  'Tap to watch the live route.',
       url:   liveUrl ?? '/',
       icon:  '/public/icon-192.png',
@@ -172,7 +174,8 @@ liveRouter.get('/status/:token', async (req: Request, res: Response) => {
     status:    'ok',
     token:     s.token,
     userName:  s.userName,
-    userId:    s.userId,    // ← needed for client to match session to correct friend
+    userId:    s.userId,
+    sport:     (s as unknown as Record<string,unknown>).sport ?? 'running',
     session:   s.status,
     startedAt: s.startedAt,
     updatedAt: s.updatedAt,
