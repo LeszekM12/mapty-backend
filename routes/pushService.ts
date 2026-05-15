@@ -248,6 +248,18 @@ export async function notifyClubMembers(
   } catch { /* non-critical */ }
 }
 
+// ── Check user push preferences ──────────────────────────────────────────────
+
+async function isNotifEnabled(userId: string, key: string): Promise<boolean> {
+  try {
+    const { User } = await import('../models/User.js');
+    const user = await User.findOne({ userId }).select('pushSettings');
+    const settings = (user as unknown as Record<string,unknown>)?.pushSettings as Record<string,boolean> | undefined;
+    if (!settings) return true; // default: all enabled
+    return settings[key] !== false;
+  } catch { return true; }
+}
+
 // ── Save to Notification collection ─────────────────────────────────────────
 
 export async function saveNotification(
@@ -280,14 +292,17 @@ export async function notifyNewActivity(
   try {
     const recipients = await getFollowersAndFriends(authorId);
     if (!recipients.length) return;
+    const enabledRecipients = await Promise.all(recipients.map(async uid => (await isNotifEnabled(uid, 'friend_activity')) ? uid : null));
+    const filteredRecipients = enabledRecipients.filter((uid): uid is string => uid !== null);
+    if (!filteredRecipients.length) return;
     const icons: Record<string,string> = { running:'🏃', cycling:'🚴', walking:'🚶' };
     const icon = icons[sport] ?? '🏅';
     const title = `${icon} ${authorName}`;
     const body  = activityName
       ? `${activityName} · ${distanceKm.toFixed(1)} km`
       : `${sport} · ${distanceKm.toFixed(1)} km`;
-    await pushToUsers(recipients, { title, body, icon: '/public/icon-192.png', url: '/' });
-    await Promise.all(recipients.map(uid => saveNotification(uid, 'friend_activity', title, body, icon)));
+    await pushToUsers(filteredRecipients, { title, body, icon: '/public/icon-192.png', url: '/' });
+    await Promise.all(filteredRecipients.map(uid => saveNotification(uid, 'friend_activity', title, body, icon)));
   } catch { /* non-critical */ }
 }
 
@@ -299,10 +314,13 @@ export async function notifyNewPost(
   try {
     const recipients = await getFollowersAndFriends(authorId);
     if (!recipients.length) return;
+    const enabledPostRec = await Promise.all(recipients.map(async uid => (await isNotifEnabled(uid, 'friend_post')) ? uid : null));
+    const filteredPostRec = enabledPostRec.filter((uid): uid is string => uid !== null);
+    if (!filteredPostRec.length) return;
     const ptitle = `📸 ${authorName}`;
     const pbody  = hasPhoto ? (title || 'Dodał nowe zdjęcie') : (title || 'Dodał nowy post');
-    await pushToUsers(recipients, { title: ptitle, body: pbody, icon: '/public/icon-192.png', url: '/' });
-    await Promise.all(recipients.map(uid => saveNotification(uid, 'friend_post', ptitle, pbody, '📸')));
+    await pushToUsers(filteredPostRec, { title: ptitle, body: pbody, icon: '/public/icon-192.png', url: '/' });
+    await Promise.all(filteredPostRec.map(uid => saveNotification(uid, 'friend_post', ptitle, pbody, '📸')));
   } catch { /* non-critical */ }
 }
 
@@ -312,6 +330,7 @@ export async function notifyLike(
   ownerId: string, itemType: 'activity' | 'post',
 ): Promise<void> {
   if (likerId === ownerId) return;
+  if (!(await isNotifEnabled(ownerId, 'like'))) return;
   try {
     const label = itemType === 'activity' ? 'aktywność' : 'post';
     const title = `❤️ ${likerName}`;
@@ -329,6 +348,7 @@ export async function notifyFollow(
   targetId: string,
 ): Promise<void> {
   if (followerId === targetId) return;
+  if (!(await isNotifEnabled(targetId, 'follow'))) return;
   try {
     const title = `👋 ${followerName}`;
     const body  = 'Zaczął Cię obserwować';
@@ -365,6 +385,7 @@ export async function notifyFollowRequest(
   targetId: string,
 ): Promise<void> {
   if (requesterId === targetId) return;
+  if (!(await isNotifEnabled(targetId, 'follow_request'))) return;
   try {
     const title = `👤 ${requesterName}`;
     const body  = 'Chce Cię obserwować — zatwierdź lub odrzuć';
@@ -381,6 +402,7 @@ export async function notifyComment(
   ownerId: string, itemType: 'activity' | 'post', text: string,
 ): Promise<void> {
   if (commenterId === ownerId) return;
+  if (!(await isNotifEnabled(ownerId, 'comment'))) return;
   try {
     const label = itemType === 'activity' ? 'aktywność' : 'post';
     const title = `💬 ${commenterName}`;

@@ -15,6 +15,7 @@ export interface IUser extends Document {
   pendingFriends:   { userId: string; name: string }[];
   pendingFollowers: string[];
   isPrivate:        boolean;
+  pushSettings?:    Record<string, boolean>;
   city:         string;
   region:       string;
   birthDate:    string | null;
@@ -39,6 +40,7 @@ const UserSchema = new Schema<IUser>(
     pendingFriends:   [{ userId: { type: String }, name: { type: String } }],
     pendingFollowers: [{ type: String }],
     isPrivate:        { type: Boolean, default: false },
+    pushSettings:     { type: Object, default: {} },
     city:      { type: String, default: '' },
     region:    { type: String, default: '' },
     birthDate: { type: String, default: null },
