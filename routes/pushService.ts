@@ -256,18 +256,16 @@ export async function saveNotification(
   title:   string,
   body:    string,
   icon:    string,
+  meta?:   string,
 ): Promise<void> {
   try {
     const { Notification } = await import('../models/Notification.js');
     await Notification.create({
       notifId:   `${type}_${userId}_${Date.now()}`,
-      userId,
-      type,
-      title,
-      body,
-      icon,
+      userId, type, title, body, icon,
       read:      false,
       timestamp: Date.now(),
+      meta:      meta ?? null,
     });
   } catch { /* non-critical */ }
 }
@@ -358,6 +356,22 @@ export async function notifyActivityFinished(
       icon:  '/public/icon-192.png',
       url:   '/',
     });
+  } catch { /* non-critical */ }
+}
+
+/** Gdy ktoś wysyła request follow do prywatnego profilu */
+export async function notifyFollowRequest(
+  requesterId: string, requesterName: string,
+  targetId: string,
+): Promise<void> {
+  if (requesterId === targetId) return;
+  try {
+    const title = `👤 ${requesterName}`;
+    const body  = 'Chce Cię obserwować — zatwierdź lub odrzuć';
+    await Promise.all([
+      pushToUser(targetId, { title, body, icon: '/public/icon-192.png', url: '/' }),
+      saveNotification(targetId, 'follow_request', title, body, '👤', requesterId),
+    ]);
   } catch { /* non-critical */ }
 }
 

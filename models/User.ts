@@ -12,7 +12,9 @@ export interface IUser extends Document {
   weeklyWins:   number;
   bestStreak:   number;
   clubs:        string[]; // clubId[]
-  pendingFriends: { userId: string; name: string }[];
+  pendingFriends:   { userId: string; name: string }[];
+  pendingFollowers: string[];
+  isPrivate:        boolean;
   city:         string;
   region:       string;
   birthDate:    string | null;
@@ -34,7 +36,9 @@ const UserSchema = new Schema<IUser>(
     weeklyWins: { type: Number, default: 0 },
     bestStreak: { type: Number, default: 0 },
     clubs:      [{ type: String }],
-    pendingFriends: [{ userId: { type: String }, name: { type: String } }],
+    pendingFriends:   [{ userId: { type: String }, name: { type: String } }],
+    pendingFollowers: [{ type: String }],
+    isPrivate:        { type: Boolean, default: false },
     city:      { type: String, default: '' },
     region:    { type: String, default: '' },
     birthDate: { type: String, default: null },

@@ -8,7 +8,12 @@ export type NotifType =
   | 'streak'
   | 'friend_activity'
   | 'club_post'
-  | 'system';
+  | 'system'
+  | 'follow_request'
+  | 'comment'
+  | 'like'
+  | 'friend_activity'
+  | 'friend_post';
 
 export interface INotification extends Document {
   notifId:   string;
@@ -20,6 +25,7 @@ export interface INotification extends Document {
   read:      boolean;
   timestamp: number;
   syncedAt:  Date;
+  meta?:     string;
 }
 
 const NotificationSchema = new Schema<INotification>(
@@ -28,7 +34,7 @@ const NotificationSchema = new Schema<INotification>(
     userId:    { type: String, required: true, index: true },
     type:      {
       type: String,
-      enum: ['activity_added','achievement','weekly_goal','streak','friend_activity','club_post','system'],
+      enum: ['activity_added','achievement','weekly_goal','streak','friend_activity','club_post','system','follow_request','comment','like','friend_post'],
       default: 'system',
     },
     title:     { type: String, required: true },
@@ -37,6 +43,7 @@ const NotificationSchema = new Schema<INotification>(
     read:      { type: Boolean, default: false },
     timestamp: { type: Number, required: true },
     syncedAt:  { type: Date, default: Date.now },
+    meta:      { type: String, default: null },
   },
   {
     timestamps: true,
