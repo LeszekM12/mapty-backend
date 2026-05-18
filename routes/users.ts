@@ -146,6 +146,7 @@ usersRouter.get('/search', async (req: Request, res: Response) => {
     region:       u.region ?? '',
     followersCount: (u.followers ?? []).length,
     followingCount: (u.following ?? []).length,
+    isPrivate:    (u as unknown as Record<string,unknown>).isPrivate ?? false,
   })) });
 });
 
@@ -196,6 +197,7 @@ usersRouter.get('/suggestions', async (req: Request, res: Response) => {
     city:         u.city ?? '',
     region:       u.region ?? '',
     followersCount: (u.followers ?? []).length,
+    isPrivate:    (u as unknown as Record<string,unknown>).isPrivate ?? false,
   })) });
 });
 
